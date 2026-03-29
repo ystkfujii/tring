@@ -1,0 +1,24 @@
+version: 1
+
+groups:
+  - name: workflows
+    description: Update multiple workflow files with mixed refs and selector exclusions
+    resolver: githubrelease
+    resolver_config:
+      api_url: "{{API_URL}}"
+    sources:
+      - type: githubaction
+        config:
+          file_paths:
+            - ci.yaml
+            - release.yaml
+    selectors:
+      include:
+        module_patterns:
+          - actions/*
+      exclude:
+        module_patterns:
+          - actions/cache
+    policy:
+      selection:
+        strategy: patch

@@ -1,0 +1,57 @@
+version: 1
+
+defaults:
+  policy:
+    selection:
+      strategy: patch
+
+groups:
+  - name: gomod-minor
+    description: Minor updates with selector filtering and required align constraint
+    resolver: goproxy
+    resolver_config:
+      proxy_url: "{{PROXY_URL}}"
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+    selectors:
+      include:
+        module_patterns:
+          - k8s.io/*
+          - github.com/example/*
+      exclude:
+        module_patterns:
+          - github.com/example/foo
+    policy:
+      selection:
+        strategy: minor
+      constraints:
+        - type: align
+          name: k8s-align
+          anchor: k8s.io/apimachinery
+          members:
+            - k8s.io/api
+            - k8s.io/apimachinery
+          required: true
+
+  - name: tools-default-patch
+    description: Inherit defaults and apply patch updates on envfile variables
+    resolver: goproxy
+    resolver_config:
+      proxy_url: "{{PROXY_URL}}"
+    sources:
+      - type: envfile
+        config:
+          file_paths:
+            - versions.env
+          variables:
+            - name: KUBECTL_VERSION
+              resolve_with: kubernetes/kubectl
+            - name: HELM_VERSION
+              resolve_with: helm/helm
+    selectors:
+      include:
+        module_patterns:
+          - "*"
