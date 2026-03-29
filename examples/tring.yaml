@@ -1,0 +1,92 @@
+version: 1
+
+defaults:
+  policy:
+    selection:
+      strategy: patch
+      min_release_age: 3d
+
+groups:
+  - name: go-all
+    description: All Go modules (uses this project's go.mod)
+    resolver: goproxy
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: patch
+        min_release_age: 7d
+
+  - name: go-cli
+    description: CLI-related Go modules (example config)
+    resolver: goproxy
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+    selectors:
+      include:
+        module_patterns:
+          - '*'
+      exclude:
+        module_patterns:
+          - k8s.io/*
+    policy:
+      selection:
+        strategy: patch
+        min_release_age: 7d
+
+  - name: k8s-go
+    description: Kubernetes-related Go modules (example config)
+    resolver: goproxy
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+    selectors:
+      include:
+        module_patterns:
+          - k8s.io/*
+    policy:
+      selection:
+        strategy: minor
+        min_release_age: 14d
+      constraints:
+        - type: align
+          name: kubernetes-core
+          anchor: k8s.io/apimachinery
+          members:
+            - k8s.io/api
+            - k8s.io/apiextensions-apiserver
+            - k8s.io/apimachinery
+            - k8s.io/apiserver
+            - k8s.io/client-go
+          required: true
+
+  - name: github-actions
+    description: GitHub Actions workflow dependencies
+    resolver: githubrelease
+    sources:
+      - type: githubaction
+        config:
+          file_paths:
+            - .github/workflows/ci.yaml
+            - .github/workflows/release.yaml
+    selectors:
+      include:
+        module_patterns:
+          - actions/*
+          - github/*
+    policy:
+      selection:
+        strategy: patch
+        min_release_age: 7d

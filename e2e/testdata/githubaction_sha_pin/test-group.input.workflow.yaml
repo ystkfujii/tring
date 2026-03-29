@@ -1,0 +1,15 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1234567890abcdef1234567890abcdef12345678 # v4.1.0
+      - uses: actions/cache@5555555555555555555555555555555555555555 # v4.0.0
+        with:
+          path: ~/.cache
+          key: ${{ runner.os }}-cache

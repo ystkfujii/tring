@@ -1,0 +1,28 @@
+version: 1
+
+groups:
+  - name: test-group
+    description: Test group for align constraint E2E testing
+    resolver: goproxy
+    resolver_config:
+      proxy_url: "{{PROXY_URL}}"
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: minor
+      constraints:
+        - type: align
+          name: k8s-align
+          anchor: k8s.io/apimachinery
+          members:
+            - k8s.io/api
+            - k8s.io/apimachinery
+          required: true

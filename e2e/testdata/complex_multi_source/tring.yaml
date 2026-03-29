@@ -1,0 +1,46 @@
+version: 1
+
+defaults:
+  policy:
+    selection:
+      strategy: patch
+      min_release_age: 7d
+
+groups:
+  - name: test-group
+    description: Complex test with multiple sources, selectors, and constraints
+    resolver: goproxy
+    resolver_config:
+      proxy_url: "{{PROXY_URL}}"
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+      - type: envfile
+        config:
+          file_paths:
+            - versions.env
+          variables:
+            - name: KUBECTL_VERSION
+              resolve_with: kubernetes/kubectl
+            - name: HELM_VERSION
+              resolve_with: helm/helm
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+      exclude:
+        module_patterns:
+          - "github.com/excluded/*"
+    policy:
+      selection:
+        strategy: minor
+      constraints:
+        - type: align
+          name: prometheus-align
+          anchor: github.com/prometheus/client_golang
+          members:
+            - github.com/prometheus/client_golang
+            - github.com/prometheus/common
+          required: true
