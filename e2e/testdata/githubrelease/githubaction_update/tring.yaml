@@ -1,0 +1,54 @@
+version: 1
+
+groups:
+  - name: test-group
+    description: Test group for GitHub Action patch strategy E2E testing
+    resolver: githubrelease
+    resolver_config:
+      api_url: "{{API_URL}}"
+    sources:
+      - type: githubaction
+        config:
+          file_paths:
+            - workflow.yaml
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: patch
+  - name: test-group-minor
+    description: Test group for GitHub Action minor strategy E2E testing
+    resolver: githubrelease
+    resolver_config:
+      api_url: "{{API_URL}}"
+    sources:
+      - type: githubaction
+        config:
+          file_paths:
+            - workflow.yaml
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: minor
+  - name: test-group-major
+    description: Test group for GitHub Action major strategy E2E testing
+    resolver: githubrelease
+    resolver_config:
+      api_url: "{{API_URL}}"
+    sources:
+      - type: githubaction
+        config:
+          file_paths:
+            - workflow.yaml
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: major

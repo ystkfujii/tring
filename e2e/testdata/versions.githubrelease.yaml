@@ -9,6 +9,15 @@ github_repos:
     - name: v4.1.2
       commit_sha: 11111111111111111111111111111111aaaaaaaa
       commit_date: 2024-02-01T00:00:00Z
+    - name: v4.2.0
+      commit_sha: 8888888888888888888888888888888888888888
+      commit_date: 2024-03-01T00:00:00Z
+    - name: v4.2.1
+      commit_sha: 9999999999999999999999999999999999999999
+      commit_date: 2024-03-15T00:00:00Z
+    - name: v5.0.0
+      commit_sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      commit_date: 2024-04-01T00:00:00Z
   actions/setup-go:
     - name: v5.0.0
       commit_sha: 2222222222222222222222222222222222222222
@@ -19,6 +28,15 @@ github_repos:
     - name: v5.0.2
       commit_sha: 4444444444444444444444444444444444444444
       commit_date: 2024-02-01T00:00:00Z
+    - name: v5.1.0
+      commit_sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      commit_date: 2024-03-01T00:00:00Z
+    - name: v5.1.1
+      commit_sha: cccccccccccccccccccccccccccccccccccccccc
+      commit_date: 2024-03-15T00:00:00Z
+    - name: v6.0.0
+      commit_sha: dddddddddddddddddddddddddddddddddddddddd
+      commit_date: 2024-04-01T00:00:00Z
   actions/cache:
     - name: v4.0.0
       commit_sha: 5555555555555555555555555555555555555555

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -166,20 +168,33 @@ func loadGotoolchainVersionFixtures(path string) (*gotoolchainVersionsFixture, e
 	return &fixture, nil
 }
 
-// discoverTestCases finds all subdirectories in testdata directory (1 level deep).
+// discoverTestCases finds all directories under testdata that contain tring.yaml.
 func discoverTestCases(testdataDir string) ([]string, error) {
-	entries, err := os.ReadDir(testdataDir)
+	var testCases []string
+	err := filepath.WalkDir(testdataDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || d.Name() != "tring.yaml" {
+			return nil
+		}
+
+		rel, err := filepath.Rel(testdataDir, filepath.Dir(path))
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return fmt.Errorf("root-level tring.yaml is not supported: %s", path)
+		}
+
+		testCases = append(testCases, filepath.ToSlash(rel))
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	var testCases []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			testCases = append(testCases, entry.Name())
-		}
-	}
-
+	sort.Strings(testCases)
 	return testCases, nil
 }
 
@@ -188,7 +203,7 @@ func discoverTestCases(testdataDir string) ([]string, error) {
 // 2. Discovering input/expected files based on naming convention
 // 3. Running apply for each group and comparing results
 func runTestCase(t *testing.T, caseName string, substitutions map[string]string) {
-	testDir := filepath.Join("testdata", caseName)
+	testDir := filepath.Join("testdata", filepath.FromSlash(caseName))
 	tempDir := t.TempDir()
 
 	// Load tring.yaml to get group names
