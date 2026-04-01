@@ -259,10 +259,10 @@ func (v *Validator) validatePolicy(p *Policy, prefix string) ValidationErrors {
 
 	if p.Selection != nil {
 		strategy := p.Selection.Strategy
-		if strategy != "" && strategy != StrategyPatch && strategy != StrategyMinor {
+		if strategy != "" && strategy != StrategyPatch && strategy != StrategyMinor && strategy != StrategyMajor {
 			errs = append(errs, ValidationError{
 				Field:   prefix + ".selection.strategy",
-				Message: fmt.Sprintf("unknown strategy: %q (supported: patch, minor)", strategy),
+				Message: fmt.Sprintf("unknown strategy: %q (supported: patch, minor, major)", strategy),
 			})
 		}
 

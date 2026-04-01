@@ -172,7 +172,9 @@ func (p *Planner) applyStrategy(candidates model.Candidates, current *semver.Ver
 	case config.StrategyMinor:
 		return candidates.FilterSameMajor(current)
 	default:
-		// For unknown strategies, return all candidates
+		// StrategyMajor or unknown: no filtering by major version.
+		// Unknown strategies are rejected by validation, so this branch
+		// is effectively StrategyMajor only.
 		return candidates
 	}
 }

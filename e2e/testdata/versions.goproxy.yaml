@@ -81,6 +81,8 @@ proxy_modules:
       released_at: 2024-01-15T00:00:00Z
     - version: v1.9.0
       released_at: 2024-03-20T00:00:00Z
+    - version: v2.1.0
+      released_at: 2025-03-20T00:00:00Z
   github.com/excluded/module:
     - version: v1.0.0
       released_at: 2024-01-01T00:00:00Z

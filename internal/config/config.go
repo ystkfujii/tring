@@ -64,6 +64,8 @@ const (
 	StrategyPatch Strategy = "patch"
 	// StrategyMinor selects the highest minor.patch version within the same major
 	StrategyMinor Strategy = "minor"
+	// StrategyMajor allows updates across major versions (no major-based filtering)
+	StrategyMajor Strategy = "major"
 )
 
 // Constraint defines a version constraint.
