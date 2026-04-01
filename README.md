@@ -8,7 +8,7 @@ A CLI tool to track and update local dependencies across multiple sources.
 
 ## Overview
 
-tring extracts dependencies from various sources (go.mod, envfile, GitHub Actions workflows), resolves new versions using configurable resolvers, and applies updates based on policy constraints.
+tring extracts dependencies from various sources (go.mod, envfile, Dockerfile, GitHub Actions workflows), resolves new versions using configurable resolvers, and applies updates based on policy constraints.
 
 **Scope**: This tool is responsible for updating dependencies locally. GitHub push, PR creation, CI execution, and release creation are out of scope.
 
@@ -30,7 +30,7 @@ In GitHub, users with write access can read repository secrets. Automated servic
 
 - **Flexible grouping**: Update Kubernetes modules together with `align` constraints
 - **Policy control**: `min_release_age` ensures you don't adopt versions that are too new
-- **Multi-source**: Single tool for go.mod, envfile, and GitHub Actions workflows
+- **Multi-source**: Single tool for go.mod, envfile, Dockerfile, and GitHub Actions workflows
 - **Transparent**: Simple YAML config, no magic
 
 ## Installation
@@ -243,6 +243,95 @@ Supported formats:
 
 When updating SHA-pinned refs, both the SHA and version comment are updated.
 
+#### dockerfile
+
+Extracts Docker image dependencies from Dockerfile `FROM` instructions.
+
+```yaml
+- type: dockerfile
+  config:
+    file_paths:
+      - Dockerfile
+      - docker/Dockerfile.prod
+    image_mappings:
+      - match: golang
+        dependency_name: go
+        version_scheme: semver
+      - match: myregistry.io/myimage
+        dependency_name: my-app
+        version_scheme: semver
+```
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `file_paths` | list | (required) | Paths to Dockerfile files |
+| `image_mappings` | list | (optional) | Map image names to dependency names |
+
+**Default image mappings:**
+
+The following mappings are built-in and applied automatically:
+- `golang` → `go`
+- `docker.io/library/golang` → `go`
+- `debian` → `debian`
+- `docker.io/library/debian` → `debian`
+
+**Supported FROM formats:**
+- `FROM golang:1.24.1`
+- `FROM golang:1.24 AS builder`
+- `FROM --platform=$BUILDPLATFORM golang:1.24.1 AS builder`
+- `FROM docker.io/library/debian:12.10`
+
+**Supported tag formats:**
+- `1`, `1.2`, `1.2.3` (normalized to semver)
+- `v1.2.3` (v prefix stripped)
+
+**Not supported (skipped):**
+- Tags with variants: `1.24-alpine`, `1.24.1-bookworm`
+- Named tags: `latest`, `bookworm`, `stable`
+- Digest pins: `@sha256:...`
+- ARG expansion: `FROM ${BASE_IMAGE}`
+
+**Example: Align Go version between go.mod and Dockerfile**
+
+```yaml
+groups:
+  - name: go-align
+    resolver: gotoolchain
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+          include_require: false
+          track_go_version: true
+          track_toolchain: true
+      - type: dockerfile
+        config:
+          file_paths:
+            - Dockerfile
+          image_mappings:
+            - match: golang
+              dependency_name: go
+              version_scheme: semver
+    policy:
+      selection:
+        strategy: minor
+      constraints:
+        - type: align
+          anchor: go
+          members:
+            - go
+```
+
+This configuration ensures that:
+- The `go` directive in `go.mod`
+- The `toolchain` directive in `go.mod`
+- The `golang` image tag in `Dockerfile`
+
+All stay aligned at the same Go version.
+
 ### Resolvers
 
 #### goproxy
@@ -316,9 +405,69 @@ groups:
         strategy: minor
 ```
 
+#### containerimage
+
+Resolves container image versions from multiple registries. Currently supports Docker Hub and GitHub Container Registry (GHCR). Use with `dockerfile` source.
+
+```yaml
+resolver: containerimage
+```
+
+Custom configuration can be specified:
+
+```yaml
+resolver: containerimage
+resolver_config:
+  registry_url: https://registry.hub.docker.com  # Docker Hub URL
+  ghcr_token: ghr_xxxx                           # Optional: GitHub token for private GHCR repos
+  timeout: 30s
+```
+
+**Supported registries:**
+
+| Registry | Host | Notes |
+|----------|------|-------|
+| Docker Hub | `docker.io`, `registry-1.docker.io` | Default, no auth needed for public images |
+| GHCR | `ghcr.io` | Token required for private repos |
+
+**How it works:**
+
+The resolver determines which registry to use from `Dependency.Metadata["registry_host"]` set by the dockerfile source. For each registry, it fetches available tags and filters them to only include semver-compatible versions.
+
+**Repository resolution priority:**
+
+1. `Dependency.Metadata["repository"]` (set by dockerfile source)
+2. Falls back to `Dependency.Name` with `library/` prefix for Docker Hub official images
+
+**Supported features:**
+
+| Feature | Docker Hub | GHCR |
+|---------|------------|------|
+| Public images | ✓ | ✓ |
+| Private images | - | ✓ (with token) |
+| `min_release_age` | ✓ | ✗ (no timestamps) |
+
+**Note on `min_release_age`:** When `min_release_age` is specified, candidates from registries that don't provide release timestamps (like GHCR) are excluded from selection. For Docker Hub images, `min_release_age` works as expected.
+
+**Example: Multi-registry image updates**
+
+```yaml
+groups:
+  - name: container-images
+    resolver: containerimage
+    sources:
+      - type: dockerfile
+        config:
+          file_paths:
+            - Dockerfile
+    policy:
+      selection:
+        strategy: minor
+```
+
 ### Selectors
 
-Filter dependencies by name patterns.
+Filter dependencies by name patterns. Patterns are matched against the **normalized dependency name**, not the original source reference.
 
 **Supported patterns:**
 - `*` - matches all modules
@@ -339,6 +488,22 @@ selectors:
   exclude:
     module_patterns:
       - 'k8s.io/*'            # Exclude Kubernetes modules
+```
+
+**Dependency name normalization:**
+
+For Dockerfile sources, image names are normalized to dependency names using image mappings:
+- `golang:1.24` → dependency name `go` (via default mapping)
+- `debian:12` → dependency name `debian`
+- `myimage:1.0` → dependency name `myimage` (no mapping, uses image name)
+
+Selectors match against these normalized dependency names. For example, to include only the Go image:
+
+```yaml
+selectors:
+  include:
+    module_patterns:
+      - 'go'   # Matches golang image (not 'golang')
 ```
 
 ### Policy
@@ -424,10 +589,12 @@ internal/
 pkg/impl/
 ├── bootstrap/        # Registration of all implementations
 ├── resolver/         # Resolver implementations
+│   ├── containerimage/# Container image resolver (Docker Hub, GHCR)
 │   ├── goproxy/      # Go module proxy resolver
 │   ├── githubrelease/# GitHub release/tag resolver
 │   └── gotoolchain/  # Go toolchain resolver (go.dev)
 └── sources/          # Source implementations
+    ├── dockerfile/   # Dockerfile source
     ├── gomod/        # go.mod source
     ├── envfile/      # envfile source
     └── githubaction/ # GitHub Actions workflow source
