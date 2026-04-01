@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -41,7 +43,7 @@ func (f *Factory) Create(config map[string]interface{}) (model.Resolver, error) 
 
 	opts := Options{
 		APIURL: cfg.APIURL,
-		Token:  cfg.Token,
+		Token:  os.Getenv("GITHUB_TOKEN"),
 	}
 
 	if cfg.Timeout != "" {
@@ -198,12 +200,16 @@ func (r *Resolver) fetchTags(ctx context.Context, owner, repo string) ([]gitTag,
 		}
 		defer func() { _ = resp.Body.Close() }()
 
-		if resp.StatusCode == http.StatusNotFound {
-			return nil, fmt.Errorf("repository not found: %s/%s", owner, repo)
-		}
-
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+			bodySnippet := strings.TrimSpace(string(body))
+			if resp.StatusCode == http.StatusNotFound {
+				return nil, fmt.Errorf("repository not found: %s/%s", owner, repo)
+			}
+			if bodySnippet != "" {
+				return nil, fmt.Errorf("GitHub API error: status %d: %s", resp.StatusCode, bodySnippet)
+			}
+			return nil, fmt.Errorf("GitHub API error: status %d", resp.StatusCode)
 		}
 
 		var tags []gitTag
@@ -260,7 +266,12 @@ func (r *Resolver) fetchCommitDate(ctx context.Context, owner, repo, sha string)
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return time.Time{}, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		bodySnippet := strings.TrimSpace(string(body))
+		if bodySnippet != "" {
+			return time.Time{}, fmt.Errorf("GitHub API error: status %d: %s", resp.StatusCode, bodySnippet)
+		}
+		return time.Time{}, fmt.Errorf("GitHub API error: status %d", resp.StatusCode)
 	}
 
 	var info commitInfo

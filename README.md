@@ -241,7 +241,7 @@ Resolves GitHub repository versions using the GitHub API. Fetches tags and their
 resolver: githubrelease
 ```
 
-Uses `api.github.com` by default. For rate-limited usage, set the `GITHUB_TOKEN` environment variable.
+Uses `api.github.com` by default. For authentication, set the `GITHUB_TOKEN` environment variable.
 
 Note: Only tags that can be parsed as SemVer (e.g., `v1.2.3`) are returned as candidates. Floating tags like `main`, `master`, or `v2` are skipped.
 

@@ -22,8 +22,6 @@ type Config struct {
 	APIURL string `yaml:"api_url,omitempty"`
 	// Timeout is the request timeout as a duration string (e.g., "30s")
 	Timeout string `yaml:"timeout,omitempty"`
-	// Token is an optional GitHub token for higher rate limits
-	Token string `yaml:"token,omitempty"`
 }
 
 // ValidateConfig validates githubrelease resolver configuration from a raw config map.
