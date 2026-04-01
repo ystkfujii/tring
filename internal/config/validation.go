@@ -139,6 +139,7 @@ func (v *Validator) validateGroup(g *Group, index int) ValidationErrors {
 
 	if g.Policy != nil {
 		errs = append(errs, v.validatePolicy(g.Policy, prefix+".policy")...)
+		errs = append(errs, v.validatePolicyResolverCompatibility(g.Policy, resolverType, prefix)...)
 	}
 
 	if g.Selectors != nil {
@@ -305,6 +306,23 @@ func (v *Validator) validateConstraint(c *Constraint, prefix string) ValidationE
 		errs = append(errs, ValidationError{
 			Field:   prefix + ".members",
 			Message: "members is required for align constraint",
+		})
+	}
+
+	return errs
+}
+
+// validatePolicyResolverCompatibility validates that policy settings are compatible
+// with the specified resolver type.
+func (v *Validator) validatePolicyResolverCompatibility(p *Policy, resolverType, prefix string) ValidationErrors {
+	var errs ValidationErrors
+
+	// gotoolchain resolver doesn't support min_release_age because go.dev API
+	// doesn't provide release timestamps
+	if resolverType == "gotoolchain" && p.Selection != nil && p.Selection.MinReleaseAge != "" {
+		errs = append(errs, ValidationError{
+			Field:   prefix + ".policy.selection.min_release_age",
+			Message: fmt.Sprintf("min_release_age is not supported with resolver %q", resolverType),
 		})
 	}
 

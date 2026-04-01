@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ystkfujii/tring/e2e/testgithub"
+	"github.com/ystkfujii/tring/e2e/testgotoolchain"
 	"github.com/ystkfujii/tring/e2e/testproxy"
 	"github.com/ystkfujii/tring/internal/app/apply"
 	"github.com/ystkfujii/tring/internal/config"
@@ -26,11 +27,13 @@ import (
 	// Register resolver implementations
 	_ "github.com/ystkfujii/tring/pkg/impl/resolver/githubrelease"
 	_ "github.com/ystkfujii/tring/pkg/impl/resolver/goproxy"
+	_ "github.com/ystkfujii/tring/pkg/impl/resolver/gotoolchain"
 )
 
 type versionsFixture struct {
-	ProxyModules map[string][]proxyVersionFixture   `yaml:"proxy_modules"`
-	GitHubRepos  map[string][]githubTagVersionEntry `yaml:"github_repos"`
+	ProxyModules        map[string][]proxyVersionFixture   `yaml:"proxy_modules"`
+	GitHubRepos         map[string][]githubTagVersionEntry `yaml:"github_repos"`
+	GotoolchainReleases []gotoolchainReleaseEntry          `yaml:"gotoolchain_releases"`
 }
 
 type proxyVersionsFixture struct {
@@ -39,6 +42,10 @@ type proxyVersionsFixture struct {
 
 type githubVersionsFixture struct {
 	GitHubRepos map[string][]githubTagVersionEntry `yaml:"github_repos"`
+}
+
+type gotoolchainVersionsFixture struct {
+	GotoolchainReleases []gotoolchainReleaseEntry `yaml:"gotoolchain_releases"`
 }
 
 type proxyVersionFixture struct {
@@ -52,6 +59,11 @@ type githubTagVersionEntry struct {
 	CommitDate string `yaml:"commit_date"`
 }
 
+type gotoolchainReleaseEntry struct {
+	Version string `yaml:"version"`
+	Stable  bool   `yaml:"stable"`
+}
+
 func TestApplyE2E(t *testing.T) {
 	proxyFixture, err := loadProxyVersionFixtures(filepath.Join("testdata", "versions.goproxy.yaml"))
 	if err != nil {
@@ -63,9 +75,15 @@ func TestApplyE2E(t *testing.T) {
 		t.Fatalf("failed to load githubrelease version fixtures: %v", err)
 	}
 
+	gotoolchainFixture, err := loadGotoolchainVersionFixtures(filepath.Join("testdata", "versions.gotoolchain.yaml"))
+	if err != nil {
+		t.Fatalf("failed to load gotoolchain version fixtures: %v", err)
+	}
+
 	fixtures := &versionsFixture{
-		ProxyModules: proxyFixture.ProxyModules,
-		GitHubRepos:  githubFixture.GitHubRepos,
+		ProxyModules:        proxyFixture.ProxyModules,
+		GitHubRepos:         githubFixture.GitHubRepos,
+		GotoolchainReleases: gotoolchainFixture.GotoolchainReleases,
 	}
 
 	// Start test servers
@@ -81,10 +99,16 @@ func TestApplyE2E(t *testing.T) {
 		t.Fatalf("failed to setup github repos: %v", err)
 	}
 
+	// Start gotoolchain test server
+	gotoolchainServer := testgotoolchain.New()
+	defer gotoolchainServer.Close()
+	setupGoToolchainReleases(gotoolchainServer, fixtures)
+
 	// Build substitutions map for all placeholders
 	substitutions := map[string]string{
-		"{{PROXY_URL}}": proxy.URL(),
-		"{{API_URL}}":   github.URL(),
+		"{{PROXY_URL}}":       proxy.URL(),
+		"{{API_URL}}":         github.URL(),
+		"{{GOTOOLCHAIN_URL}}": gotoolchainServer.URL(),
 	}
 
 	// Discover test cases from testdata directory
@@ -123,6 +147,20 @@ func loadGitHubVersionFixtures(path string) (*githubVersionsFixture, error) {
 	var fixture githubVersionsFixture
 	if err := yaml.Unmarshal(data, &fixture); err != nil {
 		return nil, fmt.Errorf("failed to parse githubrelease fixture: %w", err)
+	}
+
+	return &fixture, nil
+}
+
+func loadGotoolchainVersionFixtures(path string) (*gotoolchainVersionsFixture, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var fixture gotoolchainVersionsFixture
+	if err := yaml.Unmarshal(data, &fixture); err != nil {
+		return nil, fmt.Errorf("failed to parse gotoolchain fixture: %w", err)
 	}
 
 	return &fixture, nil
@@ -324,6 +362,18 @@ func setupTestModules(proxy *testproxy.Server, fixtures *versionsFixture) error 
 	}
 
 	return nil
+}
+
+// setupGoToolchainReleases adds Go releases to the gotoolchain test server from fixtures.
+func setupGoToolchainReleases(server *testgotoolchain.Server, fixtures *versionsFixture) {
+	releases := make([]testgotoolchain.GoRelease, 0, len(fixtures.GotoolchainReleases))
+	for _, entry := range fixtures.GotoolchainReleases {
+		releases = append(releases, testgotoolchain.GoRelease{
+			Version: entry.Version,
+			Stable:  entry.Stable,
+		})
+	}
+	server.SetReleases(releases)
 }
 
 // setupTestRepos adds test repositories to the GitHub API server.

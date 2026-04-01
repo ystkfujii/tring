@@ -386,3 +386,113 @@ func TestValidateGroupExists(t *testing.T) {
 		t.Error("ValidateGroupExists() = nil, want error")
 	}
 }
+
+func TestValidateGotoolchainResolver(t *testing.T) {
+	// Include gotoolchain in registered resolvers
+	validator := config.NewValidator(
+		[]string{"gomod"},
+		[]string{"goproxy", "gotoolchain"},
+	)
+
+	t.Run("gotoolchain resolver is valid", func(t *testing.T) {
+		cfg := &config.Config{
+			Version: 1,
+			Groups: []config.Group{
+				{
+					Name:     "go-runtime",
+					Resolver: "gotoolchain",
+					Sources: []config.RawSource{
+						{
+							Type: "gomod",
+							Config: map[string]interface{}{
+								"manifest_paths":   []interface{}{"go.mod"},
+								"include_require":  false,
+								"track_go_version": true,
+								"track_toolchain":  true,
+							},
+						},
+					},
+					Policy: &config.Policy{
+						Selection: &config.Selection{
+							Strategy: config.StrategyMinor,
+						},
+					},
+				},
+			},
+		}
+
+		errs := validator.Validate(cfg)
+		if !errs.IsEmpty() {
+			t.Errorf("Validate() = %v, want no errors for gotoolchain resolver", errs)
+		}
+	})
+
+	t.Run("gotoolchain with min_release_age errors", func(t *testing.T) {
+		cfg := &config.Config{
+			Version: 1,
+			Groups: []config.Group{
+				{
+					Name:     "go-runtime",
+					Resolver: "gotoolchain",
+					Sources: []config.RawSource{
+						{
+							Type: "gomod",
+							Config: map[string]interface{}{
+								"manifest_paths":   []interface{}{"go.mod"},
+								"track_go_version": true,
+							},
+						},
+					},
+					Policy: &config.Policy{
+						Selection: &config.Selection{
+							Strategy:      config.StrategyMinor,
+							MinReleaseAge: "7d",
+						},
+					},
+				},
+			},
+		}
+
+		errs := validator.Validate(cfg)
+		if errs.IsEmpty() {
+			t.Error("Validate() returned no errors for gotoolchain with min_release_age")
+		}
+		if !strings.Contains(errs.Error(), "min_release_age") {
+			t.Errorf("Validate() error should mention 'min_release_age': %v", errs)
+		}
+		if !strings.Contains(errs.Error(), "gotoolchain") {
+			t.Errorf("Validate() error should mention 'gotoolchain': %v", errs)
+		}
+	})
+
+	t.Run("goproxy with min_release_age is valid", func(t *testing.T) {
+		cfg := &config.Config{
+			Version: 1,
+			Groups: []config.Group{
+				{
+					Name:     "dependencies",
+					Resolver: "goproxy",
+					Sources: []config.RawSource{
+						{
+							Type: "gomod",
+							Config: map[string]interface{}{
+								"manifest_paths": []interface{}{"go.mod"},
+							},
+						},
+					},
+					Policy: &config.Policy{
+						Selection: &config.Selection{
+							Strategy:      config.StrategyMinor,
+							MinReleaseAge: "7d",
+						},
+					},
+				},
+			},
+		}
+
+		errs := validator.Validate(cfg)
+		if !errs.IsEmpty() {
+			t.Errorf("Validate() = %v, want no errors for goproxy with min_release_age", errs)
+		}
+	})
+}

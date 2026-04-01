@@ -13,4 +13,5 @@ import (
 	// Import all resolver implementations to trigger their init() functions
 	_ "github.com/ystkfujii/tring/pkg/impl/resolver/githubrelease"
 	_ "github.com/ystkfujii/tring/pkg/impl/resolver/goproxy"
+	_ "github.com/ystkfujii/tring/pkg/impl/resolver/gotoolchain"
 )
