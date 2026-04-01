@@ -4,13 +4,9 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/ystkfujii/tring/internal/config"
 )
 
-func init() {
-	config.RegisterSourceConfigValidator(sourceKind, ValidateConfig)
-}
+const Kind = "envfile"
 
 // Config is the configuration for the envfile source.
 type Config struct {
@@ -24,18 +20,27 @@ type Variable struct {
 	ResolveWith string `yaml:"resolve_with"`
 }
 
-// ValidateConfig validates envfile source configuration from a raw config map.
-func ValidateConfig(raw map[string]interface{}) error {
+// DecodeConfig decodes a raw config map into a typed Config.
+func DecodeConfig(raw map[string]interface{}) (Config, error) {
 	var cfg Config
 	if raw == nil {
-		return cfg.validate()
+		return cfg, nil
 	}
 	data, err := yaml.Marshal(raw)
 	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+		return cfg, fmt.Errorf("failed to marshal config: %w", err)
 	}
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return fmt.Errorf("failed to parse envfile config: %w", err)
+		return cfg, fmt.Errorf("failed to parse envfile config: %w", err)
+	}
+	return cfg, nil
+}
+
+// ValidateConfig validates envfile source configuration from a raw config map.
+func ValidateConfig(raw map[string]interface{}) error {
+	cfg, err := DecodeConfig(raw)
+	if err != nil {
+		return err
 	}
 	return cfg.validate()
 }

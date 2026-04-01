@@ -7,7 +7,6 @@ import (
 
 	"github.com/ystkfujii/tring/internal/app/apply"
 	"github.com/ystkfujii/tring/internal/cli"
-	_ "github.com/ystkfujii/tring/pkg/impl/bootstrap"
 )
 
 func main() {

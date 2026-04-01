@@ -21,7 +21,7 @@ func mustParse(s string) *semver.Version {
 	return v
 }
 
-func TestFactoryCreateTokenFromEnv(t *testing.T) {
+func TestNewResolverTokenFromEnv(t *testing.T) {
 	tests := []struct {
 		name      string
 		envToken  string
@@ -45,19 +45,13 @@ func TestFactoryCreateTokenFromEnv(t *testing.T) {
 				t.Setenv("GITHUB_TOKEN", tt.envToken)
 			}
 
-			factory := &Factory{}
-			resolver, err := factory.Create(map[string]interface{}{})
+			resolver, err := NewResolver(map[string]interface{}{})
 			if err != nil {
-				t.Fatalf("Create() error = %v", err)
+				t.Fatalf("NewResolver() error = %v", err)
 			}
 
-			r, ok := resolver.(*Resolver)
-			if !ok {
-				t.Fatal("Create() did not return *Resolver")
-			}
-
-			if r.token != tt.wantToken {
-				t.Errorf("token = %q, want %q", r.token, tt.wantToken)
+			if resolver.token != tt.wantToken {
+				t.Errorf("token = %q, want %q", resolver.token, tt.wantToken)
 			}
 		})
 	}
@@ -147,8 +141,8 @@ func TestResolverResolve(t *testing.T) {
 	// Check v1.1.0 has correct metadata
 	for _, c := range candidates.Items {
 		if c.Version.Original() == "v1.1.0" {
-			if c.Metadata["commit_sha"] != "def456" {
-				t.Errorf("v1.1.0 commit_sha = %q, want %q", c.Metadata["commit_sha"], "def456")
+			if c.CommitSHA != "def456" {
+				t.Errorf("v1.1.0 commit_sha = %q, want %q", c.CommitSHA, "def456")
 			}
 			expectedTime := time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)
 			if !c.ReleasedAt.Equal(expectedTime) {
@@ -292,22 +286,20 @@ func TestFactoryCreate(t *testing.T) {
 		},
 	}
 
-	factory := &Factory{}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resolver, err := factory.Create(tt.config)
+			resolver, err := NewResolver(tt.config)
 			if tt.wantErr {
 				if err == nil {
-					t.Error("Create() expected error, got nil")
+					t.Error("NewResolver() expected error, got nil")
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("Create() error = %v", err)
+				t.Fatalf("NewResolver() error = %v", err)
 			}
 			if resolver == nil {
-				t.Error("Create() returned nil resolver")
+				t.Error("NewResolver() returned nil resolver")
 			}
 		})
 	}

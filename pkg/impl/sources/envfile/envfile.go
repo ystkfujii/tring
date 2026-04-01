@@ -10,30 +10,14 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
-	"gopkg.in/yaml.v3"
 
 	"github.com/ystkfujii/tring/internal/domain/model"
-	"github.com/ystkfujii/tring/pkg/impl/sources"
 )
 
-const sourceKind = "envfile"
-
-func init() {
-	sources.Register(sourceKind, &Factory{})
-}
-
-// Factory creates envfile sources.
-type Factory struct{}
-
-// Kind returns the source type.
-func (f *Factory) Kind() string {
-	return sourceKind
-}
-
-// Create creates a new envfile source from configuration map.
-func (f *Factory) Create(config map[string]interface{}, basePath string) (model.Source, error) {
-	var cfg Config
-	if err := decodeConfig(config, &cfg); err != nil {
+// NewSource creates a new envfile source from a raw configuration map.
+func NewSource(rawConfig map[string]interface{}, basePath string) (*Source, error) {
+	cfg, err := DecodeConfig(rawConfig)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse envfile config: %w", err)
 	}
 
@@ -60,17 +44,6 @@ func (f *Factory) Create(config map[string]interface{}, basePath string) (model.
 	}, nil
 }
 
-func decodeConfig(raw map[string]interface{}, cfg *Config) error {
-	if raw == nil {
-		return nil
-	}
-	data, err := yaml.Marshal(raw)
-	if err != nil {
-		return err
-	}
-	return yaml.Unmarshal(data, cfg)
-}
-
 // Source extracts and updates dependencies from envfiles.
 type Source struct {
 	paths     []string
@@ -83,7 +56,7 @@ var _ model.Source = (*Source)(nil)
 
 // Kind returns the source type.
 func (s *Source) Kind() string {
-	return sourceKind
+	return Kind
 }
 
 // variableRegex matches variable assignments:
@@ -153,13 +126,10 @@ func (s *Source) extractFromFile(path string) ([]model.Dependency, error) {
 		deps = append(deps, model.Dependency{
 			Name:       varConfig.ResolveWith,
 			Version:    v,
-			SourceKind: sourceKind,
+			SourceKind: Kind,
 			FilePath:   path,
 			Locator:    varName, // Use variable name as locator
-			Metadata: map[string]string{
-				"line":     fmt.Sprintf("%d", lineNum),
-				"var_name": varName,
-			},
+			Line:       lineNum,
 		})
 	}
 
@@ -174,7 +144,7 @@ func (s *Source) Apply(ctx context.Context, changes []model.PlannedChange) error
 		if c.IsSkipped() || !c.HasUpdate() {
 			continue
 		}
-		if c.Dependency.SourceKind != sourceKind {
+		if c.Dependency.SourceKind != Kind {
 			continue
 		}
 		changesByFile[c.Dependency.FilePath] = append(changesByFile[c.Dependency.FilePath], c)

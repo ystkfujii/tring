@@ -5,14 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 
 	"github.com/ystkfujii/tring/internal/config"
 	"github.com/ystkfujii/tring/internal/domain/model"
 	"github.com/ystkfujii/tring/internal/domain/planner"
 	"github.com/ystkfujii/tring/internal/output/render"
-	"github.com/ystkfujii/tring/pkg/impl/resolver"
-	"github.com/ystkfujii/tring/pkg/impl/sources"
+	"github.com/ystkfujii/tring/pkg/impl/resolver/githubrelease"
+	"github.com/ystkfujii/tring/pkg/impl/resolver/goproxy"
+	"github.com/ystkfujii/tring/pkg/impl/resolver/gotoolchain"
+	"github.com/ystkfujii/tring/pkg/impl/sources/envfile"
+	"github.com/ystkfujii/tring/pkg/impl/sources/githubaction"
+	"github.com/ystkfujii/tring/pkg/impl/sources/gomod"
 )
 
 // Options configures the apply executor.
@@ -45,36 +48,22 @@ func IsValidationError(err error) bool {
 
 // Run executes the apply command.
 func Run(ctx context.Context, opts Options) error {
-	cfg, err := config.Load(opts.ConfigPath)
+	cfg, err := config.LoadResolved(opts.ConfigPath)
 	if err != nil {
 		return ValidationError{fmt.Errorf("failed to load config: %w", err)}
 	}
 
-	validator := config.NewValidator(sources.RegisteredTypes(), resolver.RegisteredTypes())
-	if errs := validator.Validate(cfg); !errs.IsEmpty() {
-		return ValidationError{fmt.Errorf("config validation failed: %w", errs)}
-	}
-
-	if err := config.ValidateGroupExists(cfg, opts.GroupName); err != nil {
-		return ValidationError{err}
-	}
-
-	group, err := cfg.FindGroup(opts.GroupName)
+	group, err := cfg.Group(opts.GroupName)
 	if err != nil {
 		return ValidationError{err}
 	}
 
-	basePath, err := filepath.Abs(filepath.Dir(opts.ConfigPath))
-	if err != nil {
-		return fmt.Errorf("failed to get config directory: %w", err)
-	}
-
-	srcs, err := buildSources(group.Sources, basePath)
+	srcs, err := buildSources(group.Sources, cfg.BasePath)
 	if err != nil {
 		return fmt.Errorf("failed to build sources: %w", err)
 	}
 
-	res, err := buildResolver(group.GetResolver(), group.ResolverConfig)
+	res, err := buildResolver(group.Resolver, group.ResolverConfig)
 	if err != nil {
 		return fmt.Errorf("failed to build resolver: %w", err)
 	}
@@ -88,17 +77,12 @@ func Run(ctx context.Context, opts Options) error {
 		allDeps = append(allDeps, deps...)
 	}
 
-	effectivePolicy, err := group.GetEffectivePolicy(cfg.Defaults)
-	if err != nil {
-		return ValidationError{fmt.Errorf("invalid policy: %w", err)}
-	}
-
 	p, err := planner.New(planner.Options{
 		Resolver:     res,
-		Strategy:     effectivePolicy.Strategy,
-		MinAge:       effectivePolicy.MinReleaseAge,
+		Strategy:     group.Strategy,
+		MinAge:       group.MinReleaseAge,
 		Selectors:    group.Selectors,
-		Constraints:  effectivePolicy.Constraints,
+		Constraints:  group.Constraints,
 		ShowDiffLink: opts.ShowDiffLink,
 	})
 	if err != nil {
@@ -145,12 +129,7 @@ func buildSources(rawSources []config.RawSource, basePath string) ([]model.Sourc
 	var srcs []model.Source
 
 	for _, raw := range rawSources {
-		factory, err := sources.Get(raw.Type)
-		if err != nil {
-			return nil, err
-		}
-
-		src, err := factory.Create(raw.Config, basePath)
+		src, err := buildSource(raw, basePath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create source %q: %w", raw.Type, err)
 		}
@@ -161,15 +140,32 @@ func buildSources(rawSources []config.RawSource, basePath string) ([]model.Sourc
 	return srcs, nil
 }
 
+func buildSource(raw config.RawSource, basePath string) (model.Source, error) {
+	switch raw.Type {
+	case gomod.Kind:
+		return gomod.NewSource(raw.Config, basePath)
+	case envfile.Kind:
+		return envfile.NewSource(raw.Config, basePath)
+	case githubaction.Kind:
+		return githubaction.NewSource(raw.Config, basePath)
+	default:
+		return nil, fmt.Errorf("unknown source type: %q", raw.Type)
+	}
+}
+
 func buildResolver(resolverType string, resolverConfig map[string]interface{}) (model.Resolver, error) {
 	if resolverType == "" {
 		return nil, fmt.Errorf("no resolver specified")
 	}
 
-	factory, err := resolver.Get(resolverType)
-	if err != nil {
-		return nil, err
+	switch resolverType {
+	case goproxy.Kind:
+		return goproxy.NewResolver(resolverConfig)
+	case githubrelease.Kind:
+		return githubrelease.NewResolver(resolverConfig)
+	case gotoolchain.Kind:
+		return gotoolchain.NewResolver(resolverConfig)
+	default:
+		return nil, fmt.Errorf("unknown resolver type: %q", resolverType)
 	}
-
-	return factory.Create(resolverConfig)
 }

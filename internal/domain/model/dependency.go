@@ -21,8 +21,11 @@ type Dependency struct {
 	// For envfile: variable name
 	Locator string
 
-	// Metadata contains additional source-specific information
-	Metadata map[string]string
+	// Line is the 1-based line number for line-oriented sources.
+	Line int
+
+	// PinnedBySHA indicates the source reference is pinned to an immutable SHA.
+	PinnedBySHA bool
 }
 
 // Key returns a unique identifier for this dependency within a source file.

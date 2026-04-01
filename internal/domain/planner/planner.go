@@ -186,11 +186,9 @@ func generateDiffLink(currentVersion *semver.Version, selected *model.Candidate)
 		return ""
 	}
 
-	// Get repo_url from candidate metadata (set by resolver)
-	repoURL := selected.Metadata["repo_url"]
-	if repoURL == "" {
+	if selected.RepoURL == "" {
 		return ""
 	}
 
-	return fmt.Sprintf("%s/compare/%s...%s", repoURL, currentVersion.Original(), selected.Version.Original())
+	return fmt.Sprintf("%s/compare/%s...%s", selected.RepoURL, currentVersion.Original(), selected.Version.Original())
 }

@@ -29,8 +29,7 @@ func TestParseLine(t *testing.T) {
 		wantDep       bool
 		wantName      string
 		wantVersion   string
-		wantPinnedSHA string
-		wantSubpath   string
+		wantPinnedSHA bool
 	}{
 		{
 			name:          "simple version ref",
@@ -38,7 +37,7 @@ func TestParseLine(t *testing.T) {
 			wantDep:       true,
 			wantName:      "actions/checkout",
 			wantVersion:   "v4.1.1",
-			wantPinnedSHA: "false",
+			wantPinnedSHA: false,
 		},
 		{
 			name:          "version ref with comment",
@@ -46,7 +45,7 @@ func TestParseLine(t *testing.T) {
 			wantDep:       true,
 			wantName:      "actions/setup-go",
 			wantVersion:   "v5.0.0",
-			wantPinnedSHA: "false",
+			wantPinnedSHA: false,
 		},
 		{
 			name:          "SHA pin with version comment",
@@ -54,7 +53,7 @@ func TestParseLine(t *testing.T) {
 			wantDep:       true,
 			wantName:      "actions/create-github-app-token",
 			wantVersion:   "v2.2.1",
-			wantPinnedSHA: "true",
+			wantPinnedSHA: true,
 		},
 		{
 			name:          "subpath action",
@@ -62,8 +61,7 @@ func TestParseLine(t *testing.T) {
 			wantDep:       true,
 			wantName:      "actions/cache",
 			wantVersion:   "v3.2.1",
-			wantSubpath:   "save",
-			wantPinnedSHA: "false",
+			wantPinnedSHA: false,
 		},
 		{
 			name:          "SHA pin with subpath",
@@ -71,8 +69,7 @@ func TestParseLine(t *testing.T) {
 			wantDep:       true,
 			wantName:      "github/codeql-action",
 			wantVersion:   "v2.1.0",
-			wantSubpath:   "init",
-			wantPinnedSHA: "true",
+			wantPinnedSHA: true,
 		},
 		{
 			name:    "local action - skip",
@@ -129,12 +126,8 @@ func TestParseLine(t *testing.T) {
 				t.Errorf("Version = %q, want %q", dep.Version.Original(), tt.wantVersion)
 			}
 
-			if dep.Metadata["pinned_by_sha"] != tt.wantPinnedSHA {
-				t.Errorf("pinned_by_sha = %q, want %q", dep.Metadata["pinned_by_sha"], tt.wantPinnedSHA)
-			}
-
-			if tt.wantSubpath != "" && dep.Metadata["subpath"] != tt.wantSubpath {
-				t.Errorf("subpath = %q, want %q", dep.Metadata["subpath"], tt.wantSubpath)
+			if dep.PinnedBySHA != tt.wantPinnedSHA {
+				t.Errorf("PinnedBySHA = %v, want %v", dep.PinnedBySHA, tt.wantPinnedSHA)
 			}
 		})
 	}
@@ -181,16 +174,13 @@ jobs:
 	if deps[1].Name != "actions/setup-go" {
 		t.Errorf("deps[1].Name = %q, want %q", deps[1].Name, "actions/setup-go")
 	}
-	if deps[1].Metadata["pinned_by_sha"] != "true" {
+	if !deps[1].PinnedBySHA {
 		t.Errorf("deps[1] should be pinned by SHA")
 	}
 
 	// Check third dep (actions/cache with subpath)
 	if deps[2].Name != "actions/cache" {
 		t.Errorf("deps[2].Name = %q, want %q", deps[2].Name, "actions/cache")
-	}
-	if deps[2].Metadata["subpath"] != "save" {
-		t.Errorf("deps[2].subpath = %q, want %q", deps[2].Metadata["subpath"], "save")
 	}
 }
 
@@ -222,13 +212,10 @@ jobs:
 				Dependency: model.Dependency{
 					Name:       "actions/checkout",
 					Version:    v,
-					SourceKind: sourceKind,
+					SourceKind: Kind,
 					FilePath:   workflowPath,
 					Locator:    "line:7:actions/checkout",
-					Metadata: map[string]string{
-						"line":          "7",
-						"pinned_by_sha": "false",
-					},
+					Line:       7,
 				},
 				CurrentVersion: v,
 				TargetVersion:  newV,
@@ -268,23 +255,19 @@ jobs:
 		changes := []model.PlannedChange{
 			{
 				Dependency: model.Dependency{
-					Name:       "actions/checkout",
-					Version:    v,
-					SourceKind: sourceKind,
-					FilePath:   workflowPath,
-					Locator:    "line:7:actions/checkout",
-					Metadata: map[string]string{
-						"line":          "7",
-						"pinned_by_sha": "true",
-					},
+					Name:        "actions/checkout",
+					Version:     v,
+					SourceKind:  Kind,
+					FilePath:    workflowPath,
+					Locator:     "line:7:actions/checkout",
+					Line:        7,
+					PinnedBySHA: true,
 				},
 				CurrentVersion: v,
 				TargetVersion:  newV,
 				SelectedCandidate: &model.Candidate{
-					Version: newV,
-					Metadata: map[string]string{
-						"commit_sha": "abcdef1234567890abcdef1234567890abcdef12",
-					},
+					Version:   newV,
+					CommitSHA: "abcdef1234567890abcdef1234567890abcdef12",
 				},
 			},
 		}
@@ -325,15 +308,10 @@ jobs:
 				Dependency: model.Dependency{
 					Name:       "actions/cache",
 					Version:    v,
-					SourceKind: sourceKind,
+					SourceKind: Kind,
 					FilePath:   workflowPath,
 					Locator:    "line:7:actions/cache/save",
-					Metadata: map[string]string{
-						"line":            "7",
-						"pinned_by_sha":   "false",
-						"original_target": "actions/cache/save",
-						"subpath":         "save",
-					},
+					Line:       7,
 				},
 				CurrentVersion: v,
 				TargetVersion:  newV,
@@ -354,25 +332,20 @@ jobs:
 
 func TestParseTarget(t *testing.T) {
 	tests := []struct {
-		target      string
-		wantRepo    string
-		wantSubpath string
+		target   string
+		wantRepo string
 	}{
-		{"actions/checkout", "actions/checkout", ""},
-		{"actions/cache/save", "actions/cache", "save"},
-		{"github/codeql-action/init", "github/codeql-action", "init"},
-		{"owner/repo/deep/path", "owner/repo", "deep/path"},
-		{"invalid", "", ""},
+		{"actions/checkout", "actions/checkout"},
+		{"actions/cache/save", "actions/cache"},
+		{"github/codeql-action/init", "github/codeql-action"},
+		{"owner/repo/deep/path", "owner/repo"},
+		{"invalid", ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.target, func(t *testing.T) {
-			repo, subpath := parseTarget(tt.target)
-			if repo != tt.wantRepo {
+			if repo := parseTarget(tt.target); repo != tt.wantRepo {
 				t.Errorf("repo = %q, want %q", repo, tt.wantRepo)
-			}
-			if subpath != tt.wantSubpath {
-				t.Errorf("subpath = %q, want %q", subpath, tt.wantSubpath)
 			}
 		})
 	}

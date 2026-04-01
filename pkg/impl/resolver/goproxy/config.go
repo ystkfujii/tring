@@ -6,15 +6,9 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/ystkfujii/tring/internal/config"
 )
 
-const resolverKind = "goproxy"
-
-func init() {
-	config.RegisterResolverConfigValidator(resolverKind, ValidateConfig)
-}
+const Kind = "goproxy"
 
 // Config is the configuration for the goproxy resolver.
 type Config struct {
@@ -24,18 +18,27 @@ type Config struct {
 	Timeout string `yaml:"timeout,omitempty"`
 }
 
-// ValidateConfig validates goproxy resolver configuration from a raw config map.
-func ValidateConfig(raw map[string]interface{}) error {
+// DecodeConfig decodes a raw config map into a typed Config.
+func DecodeConfig(raw map[string]interface{}) (Config, error) {
 	var cfg Config
 	if raw == nil {
-		return cfg.validate()
+		return cfg, nil
 	}
 	data, err := yaml.Marshal(raw)
 	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+		return cfg, fmt.Errorf("failed to marshal config: %w", err)
 	}
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return fmt.Errorf("failed to parse goproxy config: %w", err)
+		return cfg, fmt.Errorf("failed to parse goproxy config: %w", err)
+	}
+	return cfg, nil
+}
+
+// ValidateConfig validates goproxy resolver configuration from a raw config map.
+func ValidateConfig(raw map[string]interface{}) error {
+	cfg, err := DecodeConfig(raw)
+	if err != nil {
+		return err
 	}
 	return cfg.validate()
 }

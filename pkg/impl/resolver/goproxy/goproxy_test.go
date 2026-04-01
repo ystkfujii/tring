@@ -172,22 +172,20 @@ func TestFactoryCreate(t *testing.T) {
 		},
 	}
 
-	factory := &Factory{}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resolver, err := factory.Create(tt.config)
+			resolver, err := NewResolver(tt.config)
 			if tt.wantErr {
 				if err == nil {
-					t.Error("Create() expected error, got nil")
+					t.Error("NewResolver() expected error, got nil")
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("Create() error = %v", err)
+				t.Fatalf("NewResolver() error = %v", err)
 			}
 			if resolver == nil {
-				t.Error("Create() returned nil resolver")
+				t.Error("NewResolver() returned nil resolver")
 			}
 		})
 	}
@@ -370,14 +368,13 @@ func TestFactoryCreateWithProxyURL(t *testing.T) {
 	}))
 	defer server.Close()
 
-	factory := &Factory{}
 	config := map[string]interface{}{
 		"proxy_url": server.URL,
 	}
 
-	resolver, err := factory.Create(config)
+	resolver, err := NewResolver(config)
 	if err != nil {
-		t.Fatalf("Create() error = %v", err)
+		t.Fatalf("NewResolver() error = %v", err)
 	}
 
 	dep := model.Dependency{
@@ -463,7 +460,7 @@ func TestExtractGitHubRepoURL(t *testing.T) {
 	}
 }
 
-func TestResolverRepoURLMetadata(t *testing.T) {
+func TestResolverRepoURL(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/github.com/spf13/cobra/@v/list":
@@ -501,7 +498,7 @@ func TestResolverRepoURLMetadata(t *testing.T) {
 			t.Fatalf("Resolve() returned %d candidates, want 1", len(candidates.Items))
 		}
 
-		repoURL := candidates.Items[0].Metadata["repo_url"]
+		repoURL := candidates.Items[0].RepoURL
 		if repoURL != "https://github.com/spf13/cobra" {
 			t.Errorf("repo_url = %q, want %q", repoURL, "https://github.com/spf13/cobra")
 		}
@@ -523,11 +520,8 @@ func TestResolverRepoURLMetadata(t *testing.T) {
 			t.Fatalf("Resolve() returned %d candidates, want 1", len(candidates.Items))
 		}
 
-		if candidates.Items[0].Metadata != nil {
-			repoURL := candidates.Items[0].Metadata["repo_url"]
-			if repoURL != "" {
-				t.Errorf("non-github module should not have repo_url, got %q", repoURL)
-			}
+		if repoURL := candidates.Items[0].RepoURL; repoURL != "" {
+			t.Errorf("non-github module should not have repo_url, got %q", repoURL)
 		}
 	})
 }

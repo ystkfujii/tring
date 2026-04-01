@@ -3,6 +3,13 @@ package config
 import (
 	"fmt"
 	"strings"
+
+	"github.com/ystkfujii/tring/pkg/impl/resolver/githubrelease"
+	"github.com/ystkfujii/tring/pkg/impl/resolver/goproxy"
+	"github.com/ystkfujii/tring/pkg/impl/resolver/gotoolchain"
+	"github.com/ystkfujii/tring/pkg/impl/sources/envfile"
+	"github.com/ystkfujii/tring/pkg/impl/sources/githubaction"
+	"github.com/ystkfujii/tring/pkg/impl/sources/gomod"
 )
 
 // ValidationError represents a configuration validation error.
@@ -38,25 +45,11 @@ func (e ValidationErrors) IsEmpty() bool {
 }
 
 // Validator validates configuration.
-// It delegates source-specific validation to registered SourceConfigDecoders.
-type Validator struct {
-	registeredSources   map[string]bool
-	registeredResolvers map[string]bool
-}
+type Validator struct{}
 
-// NewValidator creates a new Validator with known source and resolver types.
-func NewValidator(sourceTypes, resolverTypes []string) *Validator {
-	v := &Validator{
-		registeredSources:   make(map[string]bool),
-		registeredResolvers: make(map[string]bool),
-	}
-	for _, t := range sourceTypes {
-		v.registeredSources[t] = true
-	}
-	for _, t := range resolverTypes {
-		v.registeredResolvers[t] = true
-	}
-	return v
+// NewValidator creates a Validator.
+func NewValidator() *Validator {
+	return &Validator{}
 }
 
 // Validate validates the entire configuration.
@@ -120,8 +113,8 @@ func (v *Validator) validateGroup(g *Group, index int) ValidationErrors {
 		errs = append(errs, v.validateSource(&src, fmt.Sprintf("%s.sources[%d]", prefix, i))...)
 	}
 
-	resolverType := g.GetResolver()
-	if resolverType != "" && !v.registeredResolvers[resolverType] {
+	resolverType := g.Resolver
+	if resolverType != "" && !isKnownResolverType(resolverType) {
 		errs = append(errs, ValidationError{
 			Field:   prefix + ".resolver",
 			Message: fmt.Sprintf("unknown resolver type: %q", resolverType),
@@ -129,7 +122,7 @@ func (v *Validator) validateGroup(g *Group, index int) ValidationErrors {
 	}
 
 	if g.ResolverConfig != nil && resolverType != "" {
-		if err := ValidateResolverConfig(resolverType, g.ResolverConfig); err != nil {
+		if err := validateResolverConfig(resolverType, g.ResolverConfig); err != nil {
 			errs = append(errs, ValidationError{
 				Field:   prefix + ".resolver_config",
 				Message: err.Error(),
@@ -237,7 +230,7 @@ func (v *Validator) validateSource(src *RawSource, prefix string) ValidationErro
 		return errs
 	}
 
-	if !v.registeredSources[src.Type] {
+	if !isKnownSourceType(src.Type) {
 		errs = append(errs, ValidationError{
 			Field:   prefix + ".type",
 			Message: fmt.Sprintf("unknown source type: %q", src.Type),
@@ -245,7 +238,7 @@ func (v *Validator) validateSource(src *RawSource, prefix string) ValidationErro
 		return errs
 	}
 
-	if err := ValidateSourceConfig(src.Type, src.Config); err != nil {
+	if err := validateSourceConfig(src.Type, src.Config); err != nil {
 		errs = append(errs, ValidationError{
 			Field:   prefix + ".config",
 			Message: err.Error(),
@@ -329,12 +322,46 @@ func (v *Validator) validatePolicyResolverCompatibility(p *Policy, resolverType,
 	return errs
 }
 
-// ValidateGroupExists checks if the specified group exists in the config.
-func ValidateGroupExists(cfg *Config, groupName string) error {
-	for _, g := range cfg.Groups {
-		if g.Name == groupName {
-			return nil
-		}
+func isKnownSourceType(sourceType string) bool {
+	switch sourceType {
+	case gomod.Kind, envfile.Kind, githubaction.Kind:
+		return true
+	default:
+		return false
 	}
-	return fmt.Errorf("group %q not found (available: %v)", groupName, cfg.GroupNames())
+}
+
+func isKnownResolverType(resolverType string) bool {
+	switch resolverType {
+	case goproxy.Kind, githubrelease.Kind, gotoolchain.Kind:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateSourceConfig(sourceType string, raw map[string]interface{}) error {
+	switch sourceType {
+	case gomod.Kind:
+		return gomod.ValidateConfig(raw)
+	case envfile.Kind:
+		return envfile.ValidateConfig(raw)
+	case githubaction.Kind:
+		return githubaction.ValidateConfig(raw)
+	default:
+		return fmt.Errorf("unknown source type: %q", sourceType)
+	}
+}
+
+func validateResolverConfig(resolverType string, raw map[string]interface{}) error {
+	switch resolverType {
+	case goproxy.Kind:
+		return goproxy.ValidateConfig(raw)
+	case githubrelease.Kind:
+		return githubrelease.ValidateConfig(raw)
+	case gotoolchain.Kind:
+		return gotoolchain.ValidateConfig(raw)
+	default:
+		return fmt.Errorf("unknown resolver type: %q", resolverType)
+	}
 }

@@ -5,16 +5,10 @@ import (
 	"testing"
 
 	"github.com/ystkfujii/tring/internal/config"
-
-	// Import bootstrap to register source config decoders
-	_ "github.com/ystkfujii/tring/pkg/impl/bootstrap"
 )
 
 func TestValidation(t *testing.T) {
-	validator := config.NewValidator(
-		[]string{"gomod", "envfile"},
-		[]string{"goproxy"},
-	)
+	validator := config.NewValidator()
 
 	t.Run("valid config", func(t *testing.T) {
 		cfg := &config.Config{
@@ -261,10 +255,7 @@ func TestValidation(t *testing.T) {
 }
 
 func TestValidateSelectorPatterns(t *testing.T) {
-	validator := config.NewValidator(
-		[]string{"gomod"},
-		[]string{"goproxy"},
-	)
+	validator := config.NewValidator()
 
 	tests := []struct {
 		name     string
@@ -370,29 +361,8 @@ func TestValidateSelectorPatterns(t *testing.T) {
 	}
 }
 
-func TestValidateGroupExists(t *testing.T) {
-	cfg := &config.Config{
-		Version: 1,
-		Groups: []config.Group{
-			{Name: "exists"},
-		},
-	}
-
-	if err := config.ValidateGroupExists(cfg, "exists"); err != nil {
-		t.Errorf("ValidateGroupExists() = %v, want nil", err)
-	}
-
-	if err := config.ValidateGroupExists(cfg, "not-exists"); err == nil {
-		t.Error("ValidateGroupExists() = nil, want error")
-	}
-}
-
 func TestValidateGotoolchainResolver(t *testing.T) {
-	// Include gotoolchain in registered resolvers
-	validator := config.NewValidator(
-		[]string{"gomod"},
-		[]string{"goproxy", "gotoolchain"},
-	)
+	validator := config.NewValidator()
 
 	t.Run("gotoolchain resolver is valid", func(t *testing.T) {
 		cfg := &config.Config{
