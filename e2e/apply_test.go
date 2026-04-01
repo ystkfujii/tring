@@ -12,6 +12,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/ystkfujii/tring/e2e/testcontainerimage"
 	"github.com/ystkfujii/tring/e2e/testgithub"
 	"github.com/ystkfujii/tring/e2e/testgotoolchain"
 	"github.com/ystkfujii/tring/e2e/testproxy"
@@ -20,20 +21,23 @@ import (
 	"github.com/ystkfujii/tring/pkg/impl/sources"
 
 	// Register source implementations
+	_ "github.com/ystkfujii/tring/pkg/impl/sources/dockerfile"
 	_ "github.com/ystkfujii/tring/pkg/impl/sources/envfile"
 	_ "github.com/ystkfujii/tring/pkg/impl/sources/githubaction"
 	_ "github.com/ystkfujii/tring/pkg/impl/sources/gomod"
 
 	// Register resolver implementations
+	_ "github.com/ystkfujii/tring/pkg/impl/resolver/containerimage"
 	_ "github.com/ystkfujii/tring/pkg/impl/resolver/githubrelease"
 	_ "github.com/ystkfujii/tring/pkg/impl/resolver/goproxy"
 	_ "github.com/ystkfujii/tring/pkg/impl/resolver/gotoolchain"
 )
 
 type versionsFixture struct {
-	ProxyModules        map[string][]proxyVersionFixture   `yaml:"proxy_modules"`
-	GitHubRepos         map[string][]githubTagVersionEntry `yaml:"github_repos"`
-	GotoolchainReleases []gotoolchainReleaseEntry          `yaml:"gotoolchain_releases"`
+	ProxyModules        map[string][]proxyVersionFixture    `yaml:"proxy_modules"`
+	GitHubRepos         map[string][]githubTagVersionEntry  `yaml:"github_repos"`
+	GotoolchainReleases []gotoolchainReleaseEntry           `yaml:"gotoolchain_releases"`
+	ContainerImageRepos map[string][]containerImageTagEntry `yaml:"containerimage_repos"`
 }
 
 type proxyVersionsFixture struct {
@@ -64,6 +68,15 @@ type gotoolchainReleaseEntry struct {
 	Stable  bool   `yaml:"stable"`
 }
 
+type containerImageVersionsFixture struct {
+	ContainerImageRepos map[string][]containerImageTagEntry `yaml:"containerimage_repos"`
+}
+
+type containerImageTagEntry struct {
+	Name        string `yaml:"name"`
+	LastUpdated string `yaml:"last_updated"`
+}
+
 func TestApplyE2E(t *testing.T) {
 	proxyFixture, err := loadProxyVersionFixtures(filepath.Join("testdata", "versions.goproxy.yaml"))
 	if err != nil {
@@ -80,10 +93,16 @@ func TestApplyE2E(t *testing.T) {
 		t.Fatalf("failed to load gotoolchain version fixtures: %v", err)
 	}
 
+	containerimageFixture, err := loadContainerImageVersionFixtures(filepath.Join("testdata", "versions.containerimage.yaml"))
+	if err != nil {
+		t.Fatalf("failed to load containerimage version fixtures: %v", err)
+	}
+
 	fixtures := &versionsFixture{
 		ProxyModules:        proxyFixture.ProxyModules,
 		GitHubRepos:         githubFixture.GitHubRepos,
 		GotoolchainReleases: gotoolchainFixture.GotoolchainReleases,
+		ContainerImageRepos: containerimageFixture.ContainerImageRepos,
 	}
 
 	// Start test servers
@@ -104,11 +123,19 @@ func TestApplyE2E(t *testing.T) {
 	defer gotoolchainServer.Close()
 	setupGoToolchainReleases(gotoolchainServer, fixtures)
 
+	// Start containerimage test server
+	containerimageServer := testcontainerimage.New()
+	defer containerimageServer.Close()
+	if err := setupContainerImageRepos(containerimageServer, fixtures); err != nil {
+		t.Fatalf("failed to setup containerimage repos: %v", err)
+	}
+
 	// Build substitutions map for all placeholders
 	substitutions := map[string]string{
-		"{{PROXY_URL}}":       proxy.URL(),
-		"{{API_URL}}":         github.URL(),
-		"{{GOTOOLCHAIN_URL}}": gotoolchainServer.URL(),
+		"{{PROXY_URL}}":          proxy.URL(),
+		"{{API_URL}}":            github.URL(),
+		"{{GOTOOLCHAIN_URL}}":    gotoolchainServer.URL(),
+		"{{CONTAINERIMAGE_URL}}": containerimageServer.URL(),
 	}
 
 	// Discover test cases from testdata directory
@@ -161,6 +188,20 @@ func loadGotoolchainVersionFixtures(path string) (*gotoolchainVersionsFixture, e
 	var fixture gotoolchainVersionsFixture
 	if err := yaml.Unmarshal(data, &fixture); err != nil {
 		return nil, fmt.Errorf("failed to parse gotoolchain fixture: %w", err)
+	}
+
+	return &fixture, nil
+}
+
+func loadContainerImageVersionFixtures(path string) (*containerImageVersionsFixture, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var fixture containerImageVersionsFixture
+	if err := yaml.Unmarshal(data, &fixture); err != nil {
+		return nil, fmt.Errorf("failed to parse containerimage fixture: %w", err)
 	}
 
 	return &fixture, nil
@@ -398,6 +439,27 @@ func setupTestRepos(github *testgithub.Server, fixtures *versionsFixture) error 
 		}
 
 		github.AddRepo(parts[0], parts[1], tags)
+	}
+
+	return nil
+}
+
+// setupContainerImageRepos adds container image repositories to the containerimage test server.
+func setupContainerImageRepos(server *testcontainerimage.Server, fixtures *versionsFixture) error {
+	for repoKey, entries := range fixtures.ContainerImageRepos {
+		tags := make([]testcontainerimage.TagEntry, 0, len(entries))
+		for _, entry := range entries {
+			lastUpdated, err := time.Parse(time.RFC3339, entry.LastUpdated)
+			if err != nil {
+				return fmt.Errorf("invalid last_updated for repo %q tag %q: %w", repoKey, entry.Name, err)
+			}
+			tags = append(tags, testcontainerimage.TagEntry{
+				Name:        entry.Name,
+				LastUpdated: lastUpdated,
+			})
+		}
+
+		server.AddRepo(repoKey, tags)
 	}
 
 	return nil
