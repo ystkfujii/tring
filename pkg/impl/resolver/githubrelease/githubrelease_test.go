@@ -12,6 +12,7 @@ import (
 	"github.com/ystkfujii/tring/internal/domain/model"
 )
 
+//nolint:unparam // test helper intentionally uses same version
 func mustParse(s string) *semver.Version {
 	v, err := semver.NewVersion(s)
 	if err != nil {

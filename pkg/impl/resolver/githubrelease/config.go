@@ -30,6 +30,12 @@ func ValidateConfig(raw map[string]interface{}) error {
 	if raw == nil {
 		return cfg.validate()
 	}
+
+	// Reject token in config for security reasons
+	if _, ok := raw["token"]; ok {
+		return fmt.Errorf("token is not allowed in resolver_config; use GITHUB_TOKEN environment variable instead")
+	}
+
 	data, err := yaml.Marshal(raw)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
