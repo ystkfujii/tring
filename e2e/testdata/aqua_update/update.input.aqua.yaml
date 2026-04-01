@@ -1,0 +1,14 @@
+registries:
+  # standard registry comment
+  - type: standard
+    ref: v4.448.0
+  - type: local
+    name: local
+    path: registry.yaml
+packages:
+  - name: kubernetes/kubectl@v1.34.3 # inline comment
+  - name: kubernetes-sigs/kubebuilder
+    version: v4.10.1
+  - name: kubernetes-sigs/kustomize@kustomize/v5.8.0
+  - name: clamoriniere/crd-to-markdown@v0.0.3
+    registry: local

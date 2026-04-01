@@ -1,6 +1,10 @@
 package model
 
-import "github.com/Masterminds/semver/v3"
+import (
+	"strings"
+
+	"github.com/Masterminds/semver/v3"
+)
 
 // Dependency represents a dependency extracted from a source.
 type Dependency struct {
@@ -28,4 +32,21 @@ type Dependency struct {
 // Key returns a unique identifier for this dependency within a source file.
 func (d Dependency) Key() string {
 	return d.SourceKind + ":" + d.FilePath + ":" + d.Locator
+}
+
+// ResolveCacheKey returns the cache key for resolver results.
+// It includes dependency name and resolver-affecting metadata when present.
+func (d Dependency) ResolveCacheKey() string {
+	parts := []string{d.Name}
+	for _, key := range resolutionCacheMetadataKeys {
+		if value := d.Metadata[key]; value != "" {
+			parts = append(parts, key+"="+value)
+		}
+	}
+	return strings.Join(parts, "|")
+}
+
+// DisplayVersion returns the version string that should be used for user-facing output or links.
+func (d Dependency) DisplayVersion() string {
+	return DisplayVersion(d.Version, d.Metadata)
 }

@@ -1,0 +1,6 @@
+packages:
+  - name: clamoriniere/crd-to-markdown
+    type: github_tag
+    version_source: github_tag
+    repo_owner: clamoriniere
+    repo_name: crd-to-markdown

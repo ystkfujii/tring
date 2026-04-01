@@ -31,6 +31,7 @@ In GitHub, users with write access can read repository secrets. Automated servic
 - **Flexible grouping**: Update Kubernetes modules together with `align` constraints
 - **Policy control**: `min_release_age` ensures you don't adopt versions that are too new
 - **Multi-source**: Single tool for go.mod, envfile, and GitHub Actions workflows
+- **Aqua support**: Update `aqua.yaml` package versions and standard registry refs
 - **Transparent**: Simple YAML config, no magic
 
 ## Installation
@@ -243,6 +244,34 @@ Supported formats:
 
 When updating SHA-pinned refs, both the SHA and version comment are updated.
 
+#### aqua
+
+Extracts package versions and standard registry refs from `aqua.yaml`.
+
+```yaml
+- type: aqua
+  config:
+    file_paths:
+      - aqua.yaml
+    targets:
+      - packages
+      - registries
+    unsupported_version: skip
+```
+
+Supported package formats:
+- `name: owner/repo@v1.2.3`
+- `name: owner/repo` with `version: v1.2.3`
+- prefixed raw versions such as `kustomize/v5.8.0`
+- `registry: local` with a local registry declared in the same `aqua.yaml`
+
+Supported registry targets:
+- `registries[].type: standard` with `ref: vX.Y.Z`
+
+Notes:
+- Versions are compared as SemVer, while aqua-specific raw versions are preserved for write-back
+- Non-SemVer aqua versions can be skipped or treated as errors via `unsupported_version`
+
 ### Resolvers
 
 #### goproxy
@@ -315,6 +344,25 @@ groups:
       selection:
         strategy: minor
 ```
+#### aqua_registry
+
+Resolves aqua package candidates from `aqua-registry`.
+
+```yaml
+resolver: aqua_registry
+resolver_config:
+  api_url: https://api.github.com
+  registry_base_url: https://raw.githubusercontent.com/aquaproj/aqua-registry
+  github_token_env: GITHUB_TOKEN
+```
+
+Supported in v1:
+- standard registry refs backed by `aquaproj/aqua-registry`
+- local registries referenced from `aqua.yaml`
+- `version_source: github_release`
+- `version_source: github_tag`
+- `version_prefix`
+- simple `version_filter` forms using `Version matches "..."` or `not (Version matches "...")`
 
 ### Selectors
 
@@ -423,11 +471,14 @@ internal/
 
 pkg/impl/
 ├── bootstrap/        # Registration of all implementations
+├── aqua/             # Shared aqua helpers
 ├── resolver/         # Resolver implementations
+│   ├── aqua_registry/# aqua-registry resolver
 │   ├── goproxy/      # Go module proxy resolver
 │   ├── githubrelease/# GitHub release/tag resolver
 │   └── gotoolchain/  # Go toolchain resolver (go.dev)
 └── sources/          # Source implementations
+    ├── aqua/         # aqua.yaml source
     ├── gomod/        # go.mod source
     ├── envfile/      # envfile source
     └── githubaction/ # GitHub Actions workflow source

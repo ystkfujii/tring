@@ -29,3 +29,55 @@ github_repos:
     - name: v4.0.2
       commit_sha: 7777777777777777777777777777777777777777
       commit_date: 2024-02-01T00:00:00Z
+  aquaproj/aqua-registry:
+    - name: v4.448.0
+      commit_sha: 8888888888888888888888888888888888888888
+      commit_date: 2024-02-01T00:00:00Z
+    - name: v4.448.1
+      commit_sha: 9999999999999999999999999999999999999999
+      commit_date: 2024-02-10T00:00:00Z
+  kubernetes-sigs/kustomize:
+    - name: kustomize/v5.8.0
+      commit_sha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      commit_date: 2024-02-01T00:00:00Z
+    - name: kustomize/v5.8.1
+      commit_sha: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      commit_date: 2024-02-10T00:00:00Z
+  clamoriniere/crd-to-markdown:
+    - name: v0.0.3
+      commit_sha: cccccccccccccccccccccccccccccccccccccccc
+      commit_date: 2024-02-01T00:00:00Z
+    - name: v0.0.4
+      commit_sha: dddddddddddddddddddddddddddddddddddddddd
+      commit_date: 2024-02-10T00:00:00Z
+github_release_repos:
+  kubernetes/kubernetes:
+    - tag_name: v1.34.3
+      published_at: 2024-02-01T00:00:00Z
+    - tag_name: v1.34.4
+      published_at: 2024-02-10T00:00:00Z
+    - tag_name: v1.35.0-alpha.1
+      published_at: 2024-02-15T00:00:00Z
+  kubernetes-sigs/kubebuilder:
+    - tag_name: v4.10.1
+      published_at: 2024-02-01T00:00:00Z
+    - tag_name: v4.10.2
+      published_at: 2024-02-10T00:00:00Z
+    - tag_name: v4.11.0
+      published_at: 2024-03-01T00:00:00Z
+aqua_registries:
+  v4.448.0: |
+    packages:
+      - name: kubernetes/kubectl
+        type: github_release
+        repo_owner: kubernetes
+        repo_name: kubernetes
+        version_filter: not (Version matches "-(alpha|beta|rc)")
+      - type: github_release
+        repo_owner: kubernetes-sigs
+        repo_name: kubebuilder
+      - type: github_tag
+        version_source: github_tag
+        repo_owner: kubernetes-sigs
+        repo_name: kustomize
+        version_prefix: kustomize/
