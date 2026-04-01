@@ -276,6 +276,7 @@ selectors:
 
 - `patch`: Update to the latest patch version within the same major.minor
 - `minor`: Update to the latest minor.patch version within the same major
+- `major`: Allow updates across major versions (no major-based filtering)
 
 #### min_release_age
 

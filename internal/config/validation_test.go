@@ -173,6 +173,36 @@ func TestValidation(t *testing.T) {
 		}
 	})
 
+	t.Run("valid strategy major", func(t *testing.T) {
+		cfg := &config.Config{
+			Version: 1,
+			Groups: []config.Group{
+				{
+					Name:     "test",
+					Resolver: "goproxy",
+					Sources: []config.RawSource{
+						{
+							Type: "gomod",
+							Config: map[string]interface{}{
+								"manifest_paths": []interface{}{"go.mod"},
+							},
+						},
+					},
+					Policy: &config.Policy{
+						Selection: &config.Selection{
+							Strategy: config.StrategyMajor,
+						},
+					},
+				},
+			},
+		}
+
+		errs := validator.Validate(cfg)
+		if !errs.IsEmpty() {
+			t.Errorf("Validate() = %v, want no errors for major strategy", errs)
+		}
+	})
+
 	t.Run("envfile missing variables", func(t *testing.T) {
 		cfg := &config.Config{
 			Version: 1,
