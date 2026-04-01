@@ -14,10 +14,11 @@ type Candidate struct {
 	// ReleasedAt is the release timestamp of this version
 	ReleasedAt time.Time
 
-	// Metadata contains resolver-specific information needed for updates.
-	// For GitHub Actions: "commit_sha" contains the SHA for SHA-pinned references.
-	// For Go modules: typically nil.
-	Metadata map[string]string
+	// RepoURL is the repository URL used for diff links when available.
+	RepoURL string
+
+	// CommitSHA is the commit SHA associated with this candidate when available.
+	CommitSHA string
 }
 
 // Candidates holds a list of version candidates.

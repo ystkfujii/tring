@@ -8,14 +8,10 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"golang.org/x/mod/modfile"
-	"gopkg.in/yaml.v3"
 
 	"github.com/ystkfujii/tring/internal/domain/model"
 	"github.com/ystkfujii/tring/pkg/impl/resolver/gotoolchain"
-	"github.com/ystkfujii/tring/pkg/impl/sources"
 )
-
-const sourceKind = "gomod"
 
 // Locator constants for go directive and toolchain
 const (
@@ -23,22 +19,10 @@ const (
 	LocatorToolchain = "$toolchain"
 )
 
-func init() {
-	sources.Register(sourceKind, &Factory{})
-}
-
-// Factory creates gomod sources.
-type Factory struct{}
-
-// Kind returns the source type.
-func (f *Factory) Kind() string {
-	return sourceKind
-}
-
-// Create creates a new gomod source from configuration map.
-func (f *Factory) Create(config map[string]interface{}, basePath string) (model.Source, error) {
-	var cfg Config
-	if err := decodeConfig(config, &cfg); err != nil {
+// NewSource creates a new gomod source from a raw configuration map.
+func NewSource(rawConfig map[string]interface{}, basePath string) (*Source, error) {
+	cfg, err := DecodeConfig(rawConfig)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode gomod config: %w", err)
 	}
 
@@ -60,17 +44,6 @@ func (f *Factory) Create(config map[string]interface{}, basePath string) (model.
 	}, nil
 }
 
-func decodeConfig(raw map[string]interface{}, cfg *Config) error {
-	if raw == nil {
-		return nil
-	}
-	data, err := yaml.Marshal(raw)
-	if err != nil {
-		return err
-	}
-	return yaml.Unmarshal(data, cfg)
-}
-
 // Source extracts and updates dependencies from go.mod files.
 type Source struct {
 	paths          []string
@@ -84,7 +57,7 @@ var _ model.Source = (*Source)(nil)
 
 // Kind returns the source type.
 func (s *Source) Kind() string {
-	return sourceKind
+	return Kind
 }
 
 // Extract extracts dependencies from all configured go.mod files.
@@ -123,10 +96,9 @@ func (s *Source) extractFromFile(path string) ([]model.Dependency, error) {
 			deps = append(deps, model.Dependency{
 				Name:       "go",
 				Version:    v,
-				SourceKind: sourceKind,
+				SourceKind: Kind,
 				FilePath:   path,
 				Locator:    LocatorGoVersion,
-				Metadata:   nil,
 			})
 		}
 	}
@@ -140,10 +112,9 @@ func (s *Source) extractFromFile(path string) ([]model.Dependency, error) {
 			deps = append(deps, model.Dependency{
 				Name:       "go",
 				Version:    v,
-				SourceKind: sourceKind,
+				SourceKind: Kind,
 				FilePath:   path,
 				Locator:    LocatorToolchain,
-				Metadata:   nil,
 			})
 		}
 	}
@@ -164,10 +135,9 @@ func (s *Source) extractFromFile(path string) ([]model.Dependency, error) {
 			deps = append(deps, model.Dependency{
 				Name:       req.Mod.Path,
 				Version:    v,
-				SourceKind: sourceKind,
+				SourceKind: Kind,
 				FilePath:   path,
 				Locator:    req.Mod.Path, // Use module path as locator
-				Metadata:   nil,
 			})
 		}
 	}
@@ -183,7 +153,7 @@ func (s *Source) Apply(ctx context.Context, changes []model.PlannedChange) error
 		if c.IsSkipped() || !c.HasUpdate() {
 			continue
 		}
-		if c.Dependency.SourceKind != sourceKind {
+		if c.Dependency.SourceKind != Kind {
 			continue
 		}
 		changesByFile[c.Dependency.FilePath] = append(changesByFile[c.Dependency.FilePath], c)

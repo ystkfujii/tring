@@ -11,10 +11,8 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"gopkg.in/yaml.v3"
 
 	"github.com/ystkfujii/tring/internal/domain/model"
-	"github.com/ystkfujii/tring/pkg/impl/resolver"
 )
 
 const (
@@ -22,22 +20,10 @@ const (
 	defaultTimeout = 30 * time.Second
 )
 
-func init() {
-	resolver.Register("githubrelease", &Factory{})
-}
-
-// Factory creates githubrelease resolvers.
-type Factory struct{}
-
-// Kind returns the resolver type.
-func (f *Factory) Kind() string {
-	return "githubrelease"
-}
-
-// Create creates a new githubrelease resolver from configuration map.
-func (f *Factory) Create(config map[string]interface{}) (model.Resolver, error) {
-	var cfg Config
-	if err := decodeConfig(config, &cfg); err != nil {
+// NewResolver creates a githubrelease resolver from a raw configuration map.
+func NewResolver(rawConfig map[string]interface{}) (*Resolver, error) {
+	cfg, err := DecodeConfig(rawConfig)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode githubrelease config: %w", err)
 	}
 
@@ -55,17 +41,6 @@ func (f *Factory) Create(config map[string]interface{}) (model.Resolver, error) 
 	}
 
 	return New(opts), nil
-}
-
-func decodeConfig(raw map[string]interface{}, cfg *Config) error {
-	if raw == nil {
-		return nil
-	}
-	data, err := yaml.Marshal(raw)
-	if err != nil {
-		return err
-	}
-	return yaml.Unmarshal(data, cfg)
 }
 
 // Options configures the githubrelease resolver.
@@ -115,7 +90,7 @@ func New(opts Options) *Resolver {
 
 // Kind returns the resolver type.
 func (r *Resolver) Kind() string {
-	return "githubrelease"
+	return Kind
 }
 
 // Resolve fetches version candidates for the given GitHub Action dependency.
@@ -156,11 +131,8 @@ func (r *Resolver) Resolve(ctx context.Context, dep model.Dependency) (model.Can
 		candidates = append(candidates, model.Candidate{
 			Version:    v,
 			ReleasedAt: releasedAt,
-			Metadata: map[string]string{
-				"commit_sha": sha,
-				"tag":        tag.Name,
-				"repo_url":   repoURL,
-			},
+			RepoURL:    repoURL,
+			CommitSHA:  sha,
 		})
 	}
 

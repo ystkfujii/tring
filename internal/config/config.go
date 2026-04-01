@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -77,42 +78,82 @@ type Constraint struct {
 	Required bool     `yaml:"required,omitempty"`
 }
 
-// EffectivePolicy represents the resolved policy for a group after merging defaults.
-// Inheritance rules:
-//   - strategy: group.policy.selection.strategy > defaults.policy.selection.strategy > "patch"
-//   - min_release_age: group.policy.selection.min_release_age > defaults.policy.selection.min_release_age > 0
-//   - constraints: group.policy.constraints only (not inherited from defaults)
-//   - resolver: group.resolver only (not inherited from defaults)
-type EffectivePolicy struct {
-	Strategy      Strategy
-	MinReleaseAge time.Duration
-	Constraints   []Constraint
+// ResolvedConfig is the normalized configuration used by the application layer.
+type ResolvedConfig struct {
+	BasePath string
+	Groups   []ResolvedGroup
+
+	groupIndex map[string]int
 }
 
-// GetEffectivePolicy returns the merged policy for a group, combining group and default settings.
-func (g *Group) GetEffectivePolicy(defaults *Defaults) (EffectivePolicy, error) {
-	ep := EffectivePolicy{
-		Strategy: g.getStrategy(defaults),
+// ResolvedGroup contains a group after defaults and policy have been resolved.
+type ResolvedGroup struct {
+	Name           string
+	Description    string
+	Resolver       string
+	ResolverConfig map[string]interface{}
+	Sources        []RawSource
+	Selectors      *Selectors
+	Strategy       Strategy
+	MinReleaseAge  time.Duration
+	Constraints    []Constraint
+}
+
+// Group returns the named resolved group.
+func (c *ResolvedConfig) Group(name string) (*ResolvedGroup, error) {
+	index, ok := c.groupIndex[name]
+	if !ok {
+		return nil, fmt.Errorf("group %q not found", name)
+	}
+	return &c.Groups[index], nil
+}
+
+func (c *Config) Resolve(basePath string) (*ResolvedConfig, error) {
+	resolved := &ResolvedConfig{
+		BasePath:   basePath,
+		Groups:     make([]ResolvedGroup, 0, len(c.Groups)),
+		groupIndex: make(map[string]int, len(c.Groups)),
 	}
 
-	minAge, err := g.getMinReleaseAge(defaults)
+	for _, group := range c.Groups {
+		resolvedGroup, err := resolveGroup(group, c.Defaults)
+		if err != nil {
+			return nil, err
+		}
+		resolved.groupIndex[resolvedGroup.Name] = len(resolved.Groups)
+		resolved.Groups = append(resolved.Groups, resolvedGroup)
+	}
+
+	return resolved, nil
+}
+
+func resolveGroup(group Group, defaults *Defaults) (ResolvedGroup, error) {
+	minAge, err := resolveMinReleaseAge(group, defaults)
 	if err != nil {
-		return ep, err
-	}
-	ep.MinReleaseAge = minAge
-
-	// Constraints are group-specific, not inherited from defaults
-	if g.Policy != nil {
-		ep.Constraints = g.Policy.Constraints
+		return ResolvedGroup{}, err
 	}
 
-	return ep, nil
+	constraints := []Constraint(nil)
+	if group.Policy != nil {
+		constraints = group.Policy.Constraints
+	}
+
+	return ResolvedGroup{
+		Name:           group.Name,
+		Description:    group.Description,
+		Resolver:       group.Resolver,
+		ResolverConfig: group.ResolverConfig,
+		Sources:        group.Sources,
+		Selectors:      group.Selectors,
+		Strategy:       resolveStrategy(group, defaults),
+		MinReleaseAge:  minAge,
+		Constraints:    constraints,
+	}, nil
 }
 
-// getStrategy returns the effective strategy for a group.
-func (g *Group) getStrategy(defaults *Defaults) Strategy {
-	if g.Policy != nil && g.Policy.Selection != nil && g.Policy.Selection.Strategy != "" {
-		return g.Policy.Selection.Strategy
+func resolveStrategy(group Group, defaults *Defaults) Strategy {
+	if group.Policy != nil && group.Policy.Selection != nil && group.Policy.Selection.Strategy != "" {
+		return group.Policy.Selection.Strategy
 	}
 	if defaults != nil && defaults.Policy != nil && defaults.Policy.Selection != nil && defaults.Policy.Selection.Strategy != "" {
 		return defaults.Policy.Selection.Strategy
@@ -120,11 +161,10 @@ func (g *Group) getStrategy(defaults *Defaults) Strategy {
 	return StrategyPatch
 }
 
-// getMinReleaseAge returns the effective min_release_age duration for a group.
-func (g *Group) getMinReleaseAge(defaults *Defaults) (time.Duration, error) {
+func resolveMinReleaseAge(group Group, defaults *Defaults) (time.Duration, error) {
 	var ageStr string
-	if g.Policy != nil && g.Policy.Selection != nil && g.Policy.Selection.MinReleaseAge != "" {
-		ageStr = g.Policy.Selection.MinReleaseAge
+	if group.Policy != nil && group.Policy.Selection != nil && group.Policy.Selection.MinReleaseAge != "" {
+		ageStr = group.Policy.Selection.MinReleaseAge
 	} else if defaults != nil && defaults.Policy != nil && defaults.Policy.Selection != nil {
 		ageStr = defaults.Policy.Selection.MinReleaseAge
 	}
@@ -132,10 +172,4 @@ func (g *Group) getMinReleaseAge(defaults *Defaults) (time.Duration, error) {
 		return 0, nil
 	}
 	return ParseDuration(ageStr)
-}
-
-// GetResolver returns the resolver for a group.
-// Note: Resolver is group-specific and not inherited from defaults.
-func (g *Group) GetResolver() string {
-	return g.Resolver
 }

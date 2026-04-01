@@ -19,17 +19,6 @@ import (
 	"github.com/ystkfujii/tring/e2e/testproxy"
 	"github.com/ystkfujii/tring/internal/app/apply"
 	"github.com/ystkfujii/tring/internal/config"
-	"github.com/ystkfujii/tring/pkg/impl/sources"
-
-	// Register source implementations
-	_ "github.com/ystkfujii/tring/pkg/impl/sources/envfile"
-	_ "github.com/ystkfujii/tring/pkg/impl/sources/githubaction"
-	_ "github.com/ystkfujii/tring/pkg/impl/sources/gomod"
-
-	// Register resolver implementations
-	_ "github.com/ystkfujii/tring/pkg/impl/resolver/githubrelease"
-	_ "github.com/ystkfujii/tring/pkg/impl/resolver/goproxy"
-	_ "github.com/ystkfujii/tring/pkg/impl/resolver/gotoolchain"
 )
 
 type versionsFixture struct {
@@ -246,8 +235,6 @@ func runTestCase(t *testing.T, caseName string, substitutions map[string]string)
 			}
 		}
 
-		// Log registered types for debugging
-		t.Logf("Registered source types: %v", sources.RegisteredTypes())
 		t.Logf("Running group: %s", groupName)
 
 		// Run apply

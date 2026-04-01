@@ -131,23 +131,13 @@ func TestParseGoVersion(t *testing.T) {
 	}
 }
 
-func TestFactoryKind(t *testing.T) {
-	factory := &Factory{}
-	if factory.Kind() != "gotoolchain" {
-		t.Errorf("Factory.Kind() = %s, want gotoolchain", factory.Kind())
-	}
-}
-
-func TestFactoryCreate(t *testing.T) {
-	factory := &Factory{}
-
-	// Test with nil config
-	resolver, err := factory.Create(nil)
+func TestNewResolver(t *testing.T) {
+	resolver, err := NewResolver(nil)
 	if err != nil {
-		t.Errorf("Factory.Create(nil) error = %v", err)
+		t.Errorf("NewResolver(nil) error = %v", err)
 	}
 	if resolver == nil {
-		t.Error("Factory.Create(nil) returned nil resolver")
+		t.Error("NewResolver(nil) returned nil resolver")
 	}
 
 	// Test with config
@@ -155,11 +145,11 @@ func TestFactoryCreate(t *testing.T) {
 		"base_url": "https://example.com",
 		"timeout":  "10s",
 	}
-	resolver, err = factory.Create(config)
+	resolver, err = NewResolver(config)
 	if err != nil {
-		t.Errorf("Factory.Create() error = %v", err)
+		t.Errorf("NewResolver() error = %v", err)
 	}
 	if resolver == nil {
-		t.Error("Factory.Create() returned nil resolver")
+		t.Error("NewResolver() returned nil resolver")
 	}
 }

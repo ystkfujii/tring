@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -27,21 +28,27 @@ func Parse(data []byte) (*Config, error) {
 	return &cfg, nil
 }
 
-// FindGroup finds a group by name in the configuration.
-func (c *Config) FindGroup(name string) (*Group, error) {
-	for i := range c.Groups {
-		if c.Groups[i].Name == name {
-			return &c.Groups[i], nil
-		}
+// LoadResolved loads, validates, and normalizes a configuration file.
+func LoadResolved(path string) (*ResolvedConfig, error) {
+	cfg, err := Load(path)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("group not found: %q", name)
-}
 
-// GroupNames returns a list of all group names.
-func (c *Config) GroupNames() []string {
-	names := make([]string, len(c.Groups))
-	for i, g := range c.Groups {
-		names[i] = g.Name
+	validator := NewValidator()
+	if errs := validator.Validate(cfg); !errs.IsEmpty() {
+		return nil, errs
 	}
-	return names
+
+	basePath, err := filepath.Abs(filepath.Dir(path))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get config directory: %w", err)
+	}
+
+	resolved, err := cfg.Resolve(basePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve config: %w", err)
+	}
+
+	return resolved, nil
 }

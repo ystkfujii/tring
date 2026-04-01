@@ -9,34 +9,19 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"gopkg.in/yaml.v3"
 
 	"github.com/ystkfujii/tring/internal/domain/model"
-	"github.com/ystkfujii/tring/pkg/impl/resolver"
 )
 
 const (
-	resolverKind   = "gotoolchain"
 	defaultBaseURL = "https://go.dev/dl/"
 	defaultTimeout = 30 * time.Second
 )
 
-func init() {
-	resolver.Register(resolverKind, &Factory{})
-}
-
-// Factory creates gotoolchain resolvers.
-type Factory struct{}
-
-// Kind returns the resolver type.
-func (f *Factory) Kind() string {
-	return resolverKind
-}
-
-// Create creates a new gotoolchain resolver from configuration map.
-func (f *Factory) Create(config map[string]interface{}) (model.Resolver, error) {
-	var cfg Config
-	if err := decodeConfig(config, &cfg); err != nil {
+// NewResolver creates a gotoolchain resolver from a raw configuration map.
+func NewResolver(rawConfig map[string]interface{}) (*Resolver, error) {
+	cfg, err := DecodeConfig(rawConfig)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode gotoolchain config: %w", err)
 	}
 
@@ -53,17 +38,6 @@ func (f *Factory) Create(config map[string]interface{}) (model.Resolver, error) 
 	}
 
 	return New(opts), nil
-}
-
-func decodeConfig(raw map[string]interface{}, cfg *Config) error {
-	if raw == nil {
-		return nil
-	}
-	data, err := yaml.Marshal(raw)
-	if err != nil {
-		return err
-	}
-	return yaml.Unmarshal(data, cfg)
 }
 
 // Options configures the gotoolchain resolver.
@@ -109,7 +83,7 @@ func New(opts Options) *Resolver {
 
 // Kind returns the resolver type.
 func (r *Resolver) Kind() string {
-	return resolverKind
+	return Kind
 }
 
 // goRelease represents a Go release from the downloads API.
@@ -151,9 +125,6 @@ func (r *Resolver) Resolve(ctx context.Context, dep model.Dependency) (model.Can
 			// go.dev API doesn't provide release timestamps,
 			// so we leave ReleasedAt as zero value
 			ReleasedAt: time.Time{},
-			Metadata: map[string]string{
-				"stable": fmt.Sprintf("%t", rel.Stable),
-			},
 		}
 		candidates = append(candidates, candidate)
 	}

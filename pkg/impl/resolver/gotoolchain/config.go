@@ -4,13 +4,9 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/ystkfujii/tring/internal/config"
 )
 
-func init() {
-	config.RegisterResolverConfigValidator(resolverKind, ValidateConfig)
-}
+const Kind = "gotoolchain"
 
 // Config is the configuration for the gotoolchain resolver.
 type Config struct {
@@ -20,18 +16,24 @@ type Config struct {
 	Timeout string `yaml:"timeout"`
 }
 
-// ValidateConfig validates gotoolchain resolver configuration from a raw config map.
-func ValidateConfig(raw map[string]interface{}) error {
+// DecodeConfig decodes a raw config map into a typed Config.
+func DecodeConfig(raw map[string]interface{}) (Config, error) {
 	var cfg Config
 	if raw == nil {
-		return nil // All fields are optional
+		return cfg, nil
 	}
 	data, err := yaml.Marshal(raw)
 	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+		return cfg, fmt.Errorf("failed to marshal config: %w", err)
 	}
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return fmt.Errorf("failed to parse gotoolchain config: %w", err)
+		return cfg, fmt.Errorf("failed to parse gotoolchain config: %w", err)
 	}
-	return nil
+	return cfg, nil
+}
+
+// ValidateConfig validates gotoolchain resolver configuration from a raw config map.
+func ValidateConfig(raw map[string]interface{}) error {
+	_, err := DecodeConfig(raw)
+	return err
 }

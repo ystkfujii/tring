@@ -10,30 +10,14 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
-	"gopkg.in/yaml.v3"
 
 	"github.com/ystkfujii/tring/internal/domain/model"
-	"github.com/ystkfujii/tring/pkg/impl/sources"
 )
 
-const sourceKind = "githubaction"
-
-func init() {
-	sources.Register(sourceKind, &Factory{})
-}
-
-// Factory creates githubaction sources.
-type Factory struct{}
-
-// Kind returns the source type.
-func (f *Factory) Kind() string {
-	return sourceKind
-}
-
-// Create creates a new githubaction source from configuration map.
-func (f *Factory) Create(config map[string]interface{}, basePath string) (model.Source, error) {
-	var cfg Config
-	if err := decodeConfig(config, &cfg); err != nil {
+// NewSource creates a new githubaction source from a raw configuration map.
+func NewSource(rawConfig map[string]interface{}, basePath string) (*Source, error) {
+	cfg, err := DecodeConfig(rawConfig)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode githubaction config: %w", err)
 	}
 
@@ -50,17 +34,6 @@ func (f *Factory) Create(config map[string]interface{}, basePath string) (model.
 	return &Source{paths: paths}, nil
 }
 
-func decodeConfig(raw map[string]interface{}, cfg *Config) error {
-	if raw == nil {
-		return nil
-	}
-	data, err := yaml.Marshal(raw)
-	if err != nil {
-		return err
-	}
-	return yaml.Unmarshal(data, cfg)
-}
-
 // Source extracts and updates GitHub Action dependencies from workflow files.
 type Source struct {
 	paths []string
@@ -71,7 +44,7 @@ var _ model.Source = (*Source)(nil)
 
 // Kind returns the source type.
 func (s *Source) Kind() string {
-	return sourceKind
+	return Kind
 }
 
 // usesRegex matches GitHub Action uses directives:
@@ -160,7 +133,7 @@ func (s *Source) parseLine(line string, lineNum int, filePath string) *model.Dep
 	}
 
 	// Parse owner/repo and optional subpath
-	repo, subpath := parseTarget(target)
+	repo := parseTarget(target)
 	if repo == "" {
 		return nil
 	}
@@ -202,41 +175,24 @@ func (s *Source) parseLine(line string, lineNum int, filePath string) *model.Dep
 	locator := fmt.Sprintf("line:%d:%s", lineNum, target)
 
 	return &model.Dependency{
-		Name:       repo,
-		Version:    v,
-		SourceKind: sourceKind,
-		FilePath:   filePath,
-		Locator:    locator,
-		Metadata: map[string]string{
-			"original_target": target,
-			"repo":            repo,
-			"subpath":         subpath,
-			"current_ref":     ref,
-			"pinned_by_sha":   boolToString(isPinnedBySHA),
-			"version_comment": versionStr,
-			"line":            fmt.Sprintf("%d", lineNum),
-		},
+		Name:        repo,
+		Version:     v,
+		SourceKind:  Kind,
+		FilePath:    filePath,
+		Locator:     locator,
+		Line:        lineNum,
+		PinnedBySHA: isPinnedBySHA,
 	}
 }
 
-// parseTarget parses the uses target into owner/repo and optional subpath.
-// Example: "actions/checkout" -> ("actions/checkout", "")
-// Example: "actions/cache/save" -> ("actions/cache", "save")
-func parseTarget(target string) (repo, subpath string) {
+// parseTarget parses the uses target into owner/repo.
+func parseTarget(target string) string {
 	parts := strings.Split(target, "/")
 	if len(parts) < 2 {
-		return "", ""
+		return ""
 	}
 
-	// owner/repo
-	repo = parts[0] + "/" + parts[1]
-
-	// Optional subpath (actions/cache/save -> save)
-	if len(parts) > 2 {
-		subpath = strings.Join(parts[2:], "/")
-	}
-
-	return repo, subpath
+	return parts[0] + "/" + parts[1]
 }
 
 // isFloatingRef returns true if the ref is a floating tag that should be skipped.
@@ -254,13 +210,6 @@ func isFloatingRef(ref string) bool {
 	return false
 }
 
-func boolToString(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
-}
-
 // Apply applies the planned changes to the workflow files.
 func (s *Source) Apply(ctx context.Context, changes []model.PlannedChange) error {
 	// Group changes by file
@@ -269,7 +218,7 @@ func (s *Source) Apply(ctx context.Context, changes []model.PlannedChange) error
 		if c.IsSkipped() || !c.HasUpdate() {
 			continue
 		}
-		if c.Dependency.SourceKind != sourceKind {
+		if c.Dependency.SourceKind != Kind {
 			continue
 		}
 		changesByFile[c.Dependency.FilePath] = append(changesByFile[c.Dependency.FilePath], c)
@@ -289,8 +238,7 @@ func (s *Source) applyToFile(path string, changes []model.PlannedChange) error {
 	// Build a map of line number -> change
 	changesByLine := make(map[int]model.PlannedChange)
 	for _, c := range changes {
-		lineNum := 0
-		_, _ = fmt.Sscanf(c.Dependency.Metadata["line"], "%d", &lineNum)
+		lineNum := c.Dependency.Line
 		if lineNum > 0 {
 			changesByLine[lineNum] = c
 		}
@@ -346,7 +294,7 @@ func (s *Source) updateLine(line string, change model.PlannedChange) string {
 	// oldComment := matches[4]
 	trailing := matches[5] // any trailing content
 
-	isPinnedBySHA := change.Dependency.Metadata["pinned_by_sha"] == "true"
+	isPinnedBySHA := change.Dependency.PinnedBySHA
 	newVersion := change.TargetVersion.Original()
 
 	var newRef string
@@ -355,8 +303,8 @@ func (s *Source) updateLine(line string, change model.PlannedChange) string {
 	if isPinnedBySHA {
 		// For SHA pins, update both SHA and version comment
 		newSHA := ""
-		if change.SelectedCandidate != nil && change.SelectedCandidate.Metadata != nil {
-			newSHA = change.SelectedCandidate.Metadata["commit_sha"]
+		if change.SelectedCandidate != nil {
+			newSHA = change.SelectedCandidate.CommitSHA
 		}
 
 		if newSHA == "" {

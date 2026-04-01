@@ -664,9 +664,9 @@ func boolPtr(b bool) *bool {
 	return &b
 }
 
-// TestFactoryCreateIncludeRequire tests that include_require config option
-// is properly propagated through the factory -> source -> extract chain.
-func TestFactoryCreateIncludeRequire(t *testing.T) {
+// TestNewSourceIncludeRequire tests that include_require config option
+// is properly propagated through source creation and extraction.
+func TestNewSourceIncludeRequire(t *testing.T) {
 	tmpDir := t.TempDir()
 	gomodPath := filepath.Join(tmpDir, "go.mod")
 
@@ -683,16 +683,14 @@ require github.com/spf13/cobra v1.8.0
 		t.Fatalf("failed to write test go.mod: %v", err)
 	}
 
-	factory := &Factory{}
-
 	t.Run("include_require unset defaults to true", func(t *testing.T) {
 		rawConfig := map[string]interface{}{
 			"manifest_paths": []interface{}{"go.mod"},
 		}
 
-		src, err := factory.Create(rawConfig, tmpDir)
+		src, err := NewSource(rawConfig, tmpDir)
 		if err != nil {
-			t.Fatalf("Create() error = %v", err)
+			t.Fatalf("NewSource() error = %v", err)
 		}
 
 		deps, err := src.Extract(context.Background())
@@ -720,9 +718,9 @@ require github.com/spf13/cobra v1.8.0
 			"track_go_version": true,
 		}
 
-		src, err := factory.Create(rawConfig, tmpDir)
+		src, err := NewSource(rawConfig, tmpDir)
 		if err != nil {
-			t.Fatalf("Create() error = %v", err)
+			t.Fatalf("NewSource() error = %v", err)
 		}
 
 		deps, err := src.Extract(context.Background())
@@ -758,9 +756,9 @@ require github.com/spf13/cobra v1.8.0
 			"track_toolchain":  false,
 		}
 
-		src, err := factory.Create(rawConfig, tmpDir)
+		src, err := NewSource(rawConfig, tmpDir)
 		if err != nil {
-			t.Fatalf("Create() error = %v", err)
+			t.Fatalf("NewSource() error = %v", err)
 		}
 
 		deps, err := src.Extract(context.Background())
@@ -786,9 +784,9 @@ require github.com/spf13/cobra v1.8.0
 			"track_toolchain":  true,
 		}
 
-		src, err := factory.Create(rawConfig, tmpDir)
+		src, err := NewSource(rawConfig, tmpDir)
 		if err != nil {
-			t.Fatalf("Create() error = %v", err)
+			t.Fatalf("NewSource() error = %v", err)
 		}
 
 		deps, err := src.Extract(context.Background())
@@ -814,9 +812,9 @@ require github.com/spf13/cobra v1.8.0
 			"track_toolchain":  true,
 		}
 
-		src, err := factory.Create(rawConfig, tmpDir)
+		src, err := NewSource(rawConfig, tmpDir)
 		if err != nil {
-			t.Fatalf("Create() error = %v", err)
+			t.Fatalf("NewSource() error = %v", err)
 		}
 
 		deps, err := src.Extract(context.Background())

@@ -10,10 +10,8 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"gopkg.in/yaml.v3"
 
 	"github.com/ystkfujii/tring/internal/domain/model"
-	"github.com/ystkfujii/tring/pkg/impl/resolver"
 )
 
 const (
@@ -21,22 +19,10 @@ const (
 	defaultTimeout  = 30 * time.Second
 )
 
-func init() {
-	resolver.Register("goproxy", &Factory{})
-}
-
-// Factory creates goproxy resolvers.
-type Factory struct{}
-
-// Kind returns the resolver type.
-func (f *Factory) Kind() string {
-	return "goproxy"
-}
-
-// Create creates a new goproxy resolver from configuration map.
-func (f *Factory) Create(config map[string]interface{}) (model.Resolver, error) {
-	var cfg Config
-	if err := decodeConfig(config, &cfg); err != nil {
+// NewResolver creates a goproxy resolver from a raw configuration map.
+func NewResolver(rawConfig map[string]interface{}) (*Resolver, error) {
+	cfg, err := DecodeConfig(rawConfig)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode goproxy config: %w", err)
 	}
 
@@ -53,17 +39,6 @@ func (f *Factory) Create(config map[string]interface{}) (model.Resolver, error) 
 	}
 
 	return New(opts), nil
-}
-
-func decodeConfig(raw map[string]interface{}, cfg *Config) error {
-	if raw == nil {
-		return nil
-	}
-	data, err := yaml.Marshal(raw)
-	if err != nil {
-		return err
-	}
-	return yaml.Unmarshal(data, cfg)
 }
 
 // Options configures the goproxy resolver.
@@ -109,7 +84,7 @@ func New(opts Options) *Resolver {
 
 // Kind returns the resolver type.
 func (r *Resolver) Kind() string {
-	return "goproxy"
+	return Kind
 }
 
 // Resolve fetches version candidates for the given dependency.
@@ -150,11 +125,7 @@ func (r *Resolver) Resolve(ctx context.Context, dep model.Dependency) (model.Can
 		candidate := model.Candidate{
 			Version:    v,
 			ReleasedAt: info.Time,
-		}
-		if repoURL != "" {
-			candidate.Metadata = map[string]string{
-				"repo_url": repoURL,
-			}
+			RepoURL:    repoURL,
 		}
 		candidates = append(candidates, candidate)
 	}
