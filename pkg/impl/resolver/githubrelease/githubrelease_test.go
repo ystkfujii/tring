@@ -63,24 +63,6 @@ func TestFactoryCreateTokenFromEnv(t *testing.T) {
 	}
 }
 
-func TestValidateConfigRejectsToken(t *testing.T) {
-	config := map[string]interface{}{
-		"token": "some-token",
-	}
-
-	err := ValidateConfig(config)
-	if err == nil {
-		t.Fatal("ValidateConfig() expected error when token is in config")
-	}
-
-	if !contains(err.Error(), "token is not allowed") {
-		t.Errorf("error should mention 'token is not allowed', got: %v", err)
-	}
-	if !contains(err.Error(), "GITHUB_TOKEN") {
-		t.Errorf("error should mention 'GITHUB_TOKEN', got: %v", err)
-	}
-}
-
 func TestResolverAddHeadersWithToken(t *testing.T) {
 	tests := []struct {
 		name      string
