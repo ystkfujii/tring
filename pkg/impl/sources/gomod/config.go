@@ -14,7 +14,19 @@ func init() {
 
 // Config is the configuration for the gomod source.
 type Config struct {
-	ManifestPaths []string `yaml:"manifest_paths"`
+	ManifestPaths  []string `yaml:"manifest_paths"`
+	IncludeRequire *bool    `yaml:"include_require"`
+	TrackGoVersion bool     `yaml:"track_go_version"`
+	TrackToolchain bool     `yaml:"track_toolchain"`
+}
+
+// ShouldIncludeRequire returns whether require dependencies should be extracted.
+// Defaults to true if not explicitly set.
+func (c *Config) ShouldIncludeRequire() bool {
+	if c.IncludeRequire == nil {
+		return true
+	}
+	return *c.IncludeRequire
 }
 
 // ValidateConfig validates gomod source configuration from a raw config map.

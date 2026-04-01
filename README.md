@@ -114,6 +114,16 @@ tring currently operates on **Semantic Versioning (SemVer)** assumptions:
 - If the current version is **stable** (no prerelease suffix), only stable candidates are considered
 - If the current version is a **prerelease** (e.g., `v1.0.0-rc.1`), both stable and prerelease candidates are allowed
 
+**Go version normalization:**
+
+Go uses non-standard prerelease format (e.g., `go1.23rc1`, `go1.23beta2`). tring normalizes these to SemVer format internally:
+- `go1.23rc1` → `1.23.0-rc.1`
+- `go1.23beta2` → `1.23.0-beta.2`
+
+When writing back to `go.mod`, versions are formatted appropriately:
+- `go` directive: `go 1.23` (major.minor only)
+- `toolchain` directive: `toolchain go1.23.0` (full version with `go` prefix)
+
 ### Diff Links
 
 When `--diff-link` is enabled, tring generates GitHub compare links on a best-effort basis:
@@ -172,6 +182,27 @@ Extracts dependencies from `go.mod` files.
     manifest_paths:
       - go.mod
       - tools/go.mod
+```
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `manifest_paths` | list | (required) | Paths to go.mod files |
+| `include_require` | bool | `true` | Extract module dependencies from `require` statements |
+| `track_go_version` | bool | `false` | Track the `go` directive version |
+| `track_toolchain` | bool | `false` | Track the `toolchain` directive version |
+
+**Example: Track Go runtime version**
+
+```yaml
+- type: gomod
+  config:
+    manifest_paths:
+      - go.mod
+    include_require: false      # Don't track module dependencies
+    track_go_version: true      # Track 'go 1.22' directive
+    track_toolchain: true       # Track 'toolchain go1.22.0' directive
 ```
 
 #### envfile
@@ -244,6 +275,46 @@ resolver: githubrelease
 Uses `api.github.com` by default. For authentication, set the `GITHUB_TOKEN` environment variable.
 
 Note: Only tags that can be parsed as SemVer (e.g., `v1.2.3`) are returned as candidates. Floating tags like `main`, `master`, or `v2` are skipped.
+
+#### gotoolchain
+
+Resolves Go toolchain versions using the official Go downloads API. Use with `gomod` source's `track_go_version` and `track_toolchain` options.
+
+```yaml
+resolver: gotoolchain
+```
+
+Uses `go.dev/dl/?mode=json` by default. Custom base URL can be specified:
+
+```yaml
+resolver: gotoolchain
+resolver_config:
+  base_url: https://go.dev/dl/
+  timeout: 30s
+```
+
+**Limitations:**
+- Only stable Go releases are considered (prereleases like `go1.23rc1` are excluded)
+- `min_release_age` is not supported because the Go downloads API doesn't provide release timestamps
+
+**Example: Track Go runtime version**
+
+```yaml
+groups:
+  - name: go-runtime
+    resolver: gotoolchain
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+          include_require: false
+          track_go_version: true
+          track_toolchain: true
+    policy:
+      selection:
+        strategy: minor
+```
 
 ### Selectors
 
@@ -354,7 +425,8 @@ pkg/impl/
 ├── bootstrap/        # Registration of all implementations
 ├── resolver/         # Resolver implementations
 │   ├── goproxy/      # Go module proxy resolver
-│   └── githubrelease/# GitHub release/tag resolver
+│   ├── githubrelease/# GitHub release/tag resolver
+│   └── gotoolchain/  # Go toolchain resolver (go.dev)
 └── sources/          # Source implementations
     ├── gomod/        # go.mod source
     ├── envfile/      # envfile source

@@ -1,0 +1,17 @@
+gotoolchain_releases:
+  - version: go1.22.2
+    stable: true
+  - version: go1.22.1
+    stable: true
+  - version: go1.22.0
+    stable: true
+  - version: go1.21.9
+    stable: true
+  - version: go1.21.8
+    stable: true
+  - version: go1.21.0
+    stable: true
+  - version: go1.23rc1
+    stable: false
+  - version: go1.23beta2
+    stable: false

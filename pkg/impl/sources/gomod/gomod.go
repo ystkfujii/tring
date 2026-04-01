@@ -11,10 +11,17 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ystkfujii/tring/internal/domain/model"
+	"github.com/ystkfujii/tring/pkg/impl/resolver/gotoolchain"
 	"github.com/ystkfujii/tring/pkg/impl/sources"
 )
 
 const sourceKind = "gomod"
+
+// Locator constants for go directive and toolchain
+const (
+	LocatorGoVersion = "$go"
+	LocatorToolchain = "$toolchain"
+)
 
 func init() {
 	sources.Register(sourceKind, &Factory{})
@@ -45,7 +52,12 @@ func (f *Factory) Create(config map[string]interface{}, basePath string) (model.
 		}
 	}
 
-	return &Source{paths: paths}, nil
+	return &Source{
+		paths:          paths,
+		includeRequire: cfg.ShouldIncludeRequire(),
+		trackGoVersion: cfg.TrackGoVersion,
+		trackToolchain: cfg.TrackToolchain,
+	}, nil
 }
 
 func decodeConfig(raw map[string]interface{}, cfg *Config) error {
@@ -61,7 +73,10 @@ func decodeConfig(raw map[string]interface{}, cfg *Config) error {
 
 // Source extracts and updates dependencies from go.mod files.
 type Source struct {
-	paths []string
+	paths          []string
+	includeRequire bool
+	trackGoVersion bool
+	trackToolchain bool
 }
 
 // Ensure Source implements model.Source
@@ -100,26 +115,61 @@ func (s *Source) extractFromFile(path string) ([]model.Dependency, error) {
 
 	var deps []model.Dependency
 
-	for _, req := range f.Require {
-		if req.Indirect {
-			// Skip indirect dependencies for now
-			continue
+	// Extract go directive if enabled
+	if s.trackGoVersion && f.Go != nil && f.Go.Version != "" {
+		// Use ParseGoVersion to handle both stable (1.23.0) and prerelease (1.23rc1) formats
+		v, err := gotoolchain.ParseGoVersion(f.Go.Version)
+		if err == nil {
+			deps = append(deps, model.Dependency{
+				Name:       "go",
+				Version:    v,
+				SourceKind: sourceKind,
+				FilePath:   path,
+				Locator:    LocatorGoVersion,
+				Metadata:   nil,
+			})
 		}
+	}
 
-		v, err := semver.NewVersion(req.Mod.Version)
-		if err != nil {
-			// Skip non-semver versions
-			continue
+	// Extract toolchain directive if enabled
+	if s.trackToolchain && f.Toolchain != nil && f.Toolchain.Name != "" {
+		// Use ParseGoVersion to handle both stable (go1.23.0) and prerelease (go1.23rc1) formats
+		// ParseGoVersion handles the "go" prefix automatically
+		v, err := gotoolchain.ParseGoVersion(f.Toolchain.Name)
+		if err == nil {
+			deps = append(deps, model.Dependency{
+				Name:       "go",
+				Version:    v,
+				SourceKind: sourceKind,
+				FilePath:   path,
+				Locator:    LocatorToolchain,
+				Metadata:   nil,
+			})
 		}
+	}
 
-		deps = append(deps, model.Dependency{
-			Name:       req.Mod.Path,
-			Version:    v,
-			SourceKind: sourceKind,
-			FilePath:   path,
-			Locator:    req.Mod.Path, // Use module path as locator
-			Metadata:   nil,
-		})
+	if s.includeRequire {
+		for _, req := range f.Require {
+			if req.Indirect {
+				// Skip indirect dependencies for now
+				continue
+			}
+
+			v, err := semver.NewVersion(req.Mod.Version)
+			if err != nil {
+				// Skip non-semver versions
+				continue
+			}
+
+			deps = append(deps, model.Dependency{
+				Name:       req.Mod.Path,
+				Version:    v,
+				SourceKind: sourceKind,
+				FilePath:   path,
+				Locator:    req.Mod.Path, // Use module path as locator
+				Metadata:   nil,
+			})
+		}
 	}
 
 	return deps, nil
@@ -160,15 +210,24 @@ func (s *Source) applyToFile(path string, changes []model.PlannedChange) error {
 		return fmt.Errorf("failed to parse go.mod: %w", err)
 	}
 
-	updates := make(map[string]string)
 	for _, c := range changes {
-		updates[c.Dependency.Name] = c.TargetVersion.Original()
-	}
-
-	for _, req := range f.Require {
-		if newVersion, ok := updates[req.Mod.Path]; ok {
-			if err := f.AddRequire(req.Mod.Path, newVersion); err != nil {
-				return fmt.Errorf("failed to update require %s: %w", req.Mod.Path, err)
+		switch c.Dependency.Locator {
+		case LocatorGoVersion:
+			// Update go directive using proper Go version format
+			goDirective := gotoolchain.FormatGoDirective(c.TargetVersion)
+			if err := f.AddGoStmt(goDirective); err != nil {
+				return fmt.Errorf("failed to update go directive: %w", err)
+			}
+		case LocatorToolchain:
+			// Update toolchain directive using proper Go version format
+			toolchainName := gotoolchain.FormatToolchainDirective(c.TargetVersion)
+			if err := f.AddToolchainStmt(toolchainName); err != nil {
+				return fmt.Errorf("failed to update toolchain directive: %w", err)
+			}
+		default:
+			// Update require statement
+			if err := f.AddRequire(c.Dependency.Name, c.TargetVersion.Original()); err != nil {
+				return fmt.Errorf("failed to update require %s: %w", c.Dependency.Name, err)
 			}
 		}
 	}
