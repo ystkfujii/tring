@@ -1,0 +1,83 @@
+version: 1
+
+groups:
+  - name: go-runtime
+    description: Go runtime version update test for minor strategy
+    resolver: gotoolchain
+    resolver_config:
+      base_url: "{{GOTOOLCHAIN_URL}}"
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+          include_require: false
+          track_go_version: true
+          track_toolchain: true
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: minor
+  - name: go-runtime-patch
+    description: Go runtime version update test for patch strategy
+    resolver: gotoolchain
+    resolver_config:
+      base_url: "{{GOTOOLCHAIN_URL}}"
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+          include_require: false
+          track_go_version: true
+          track_toolchain: true
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: patch
+  - name: go-runtime-major
+    description: Go runtime version update test for major strategy
+    resolver: gotoolchain
+    resolver_config:
+      base_url: "{{GOTOOLCHAIN_URL}}"
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+          include_require: false
+          track_go_version: true
+          track_toolchain: true
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: major
+  - name: go-prerelease
+    description: Prerelease Go versions should be normalized, resolved, and written back correctly
+    resolver: gotoolchain
+    resolver_config:
+      base_url: "{{GOTOOLCHAIN_URL}}"
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - prerelease.go.mod
+          include_require: false
+          track_go_version: true
+          track_toolchain: true
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: patch

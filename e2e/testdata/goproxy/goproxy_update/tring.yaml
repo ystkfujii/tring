@@ -1,0 +1,106 @@
+version: 1
+
+groups:
+  - name: test-group-patch
+    description: Test group for patch strategy E2E testing
+    resolver: goproxy
+    resolver_config:
+      proxy_url: "{{PROXY_URL}}"
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: patch
+  - name: test-group-minor
+    description: Test group for minor strategy E2E testing
+    resolver: goproxy
+    resolver_config:
+      proxy_url: "{{PROXY_URL}}"
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: minor
+  - name: test-group-major
+    description: Test group for major strategy E2E testing
+    resolver: goproxy
+    resolver_config:
+      proxy_url: "{{PROXY_URL}}"
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - go.mod
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: major
+  - name: test-group-min-age
+    description: Ensure min_release_age skips too-new versions and selects the newest eligible candidate
+    resolver: goproxy
+    resolver_config:
+      proxy_url: "{{PROXY_URL}}"
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - min-age.go.mod
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: patch
+        min_release_age: 30d
+  - name: stable-current
+    description: Stable current version should ignore prerelease candidates
+    resolver: goproxy
+    resolver_config:
+      proxy_url: "{{PROXY_URL}}"
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - stable.go.mod
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: minor
+  - name: prerelease-current
+    description: Prerelease current version should allow newer prerelease candidates
+    resolver: goproxy
+    resolver_config:
+      proxy_url: "{{PROXY_URL}}"
+    sources:
+      - type: gomod
+        config:
+          manifest_paths:
+            - prerelease.go.mod
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: minor

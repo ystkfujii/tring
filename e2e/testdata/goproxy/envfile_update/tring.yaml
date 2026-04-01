@@ -1,0 +1,49 @@
+version: 1
+
+groups:
+  - name: test-group
+    description: Test group for envfile source E2E testing
+    resolver: goproxy
+    resolver_config:
+      proxy_url: "{{PROXY_URL}}"
+    sources:
+      - type: envfile
+        config:
+          file_paths:
+            - versions.env
+          variables:
+            - name: KUBECTL_VERSION
+              resolve_with: kubernetes/kubectl
+            - name: HELM_VERSION
+              resolve_with: helm/helm
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: patch
+  - name: assignment-formats
+    description: Support all documented envfile assignment formats while preserving operators
+    resolver: goproxy
+    resolver_config:
+      proxy_url: "{{PROXY_URL}}"
+    sources:
+      - type: envfile
+        config:
+          file_paths:
+            - assignment-formats.env
+          variables:
+            - name: KUBECTL_VERSION
+              resolve_with: kubernetes/kubectl
+            - name: HELM_VERSION
+              resolve_with: helm/helm
+            - name: FOO_VERSION
+              resolve_with: github.com/example/foo
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: patch

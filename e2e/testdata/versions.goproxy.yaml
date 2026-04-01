@@ -13,6 +13,22 @@ proxy_modules:
       released_at: 2024-01-10T00:00:00Z
     - version: v1.1.2
       released_at: 2024-02-01T00:00:00Z
+  github.com/example/min-age:
+    - version: v1.0.0
+      released_at: 2024-01-01T00:00:00Z
+    - version: v1.0.1
+      released_at: 2024-02-01T00:00:00Z
+    - version: v1.0.2
+      released_at: 2099-01-01T00:00:00Z
+  github.com/example/prerelease:
+    - version: v1.2.0
+      released_at: 2024-01-01T00:00:00Z
+    - version: v1.2.1
+      released_at: 2024-02-01T00:00:00Z
+    - version: v1.3.0-beta.1
+      released_at: 2024-03-01T00:00:00Z
+    - version: v1.3.0-rc.1
+      released_at: 2024-03-15T00:00:00Z
   k8s.io/apimachinery:
     - version: v0.28.0
       released_at: 2024-01-01T00:00:00Z

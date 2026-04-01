@@ -1,7 +1,7 @@
 module example.com/test
 
-go 1.22.2
+go 1.21.9
 
-toolchain go1.22.2
+toolchain go1.21.9
 
 require github.com/spf13/cobra v1.8.0
