@@ -76,7 +76,7 @@ func (a *AlignConstraint) Apply(changes []model.PlannedChange, candidatesMap map
 			continue
 		}
 
-		candidates, ok := candidatesMap[changes[i].Dependency.Name]
+		candidates, ok := candidatesMap[changes[i].Dependency.ResolveCacheKey()]
 		if !ok {
 			// Non-required: skip silently (required case already validated above)
 			continue
@@ -114,7 +114,7 @@ func (a *AlignConstraint) validateMembers(changes []model.PlannedChange, candida
 			continue
 		}
 
-		candidates, ok := candidatesMap[changes[i].Dependency.Name]
+		candidates, ok := candidatesMap[changes[i].Dependency.ResolveCacheKey()]
 		if !ok {
 			failedMembers[changes[i].Dependency.Name] = struct{}{}
 			continue

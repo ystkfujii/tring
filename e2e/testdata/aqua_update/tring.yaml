@@ -1,0 +1,20 @@
+version: 1
+
+groups:
+  - name: update
+    resolver: aqua_registry
+    resolver_config:
+      api_url: "{{API_URL}}"
+      registry_base_url: "{{API_URL}}/raw/aquaproj/aqua-registry"
+    sources:
+      - type: aqua
+        config:
+          file_paths:
+            - aqua.yaml
+          targets:
+            - packages
+            - registries
+          unsupported_version: skip
+    policy:
+      selection:
+        strategy: patch

@@ -110,3 +110,8 @@ func (c Candidates) FindByVersion(versionStr string) *Candidate {
 	}
 	return nil
 }
+
+// DisplayVersion returns the version string that should be used for user-facing output or links.
+func (c Candidate) DisplayVersion() string {
+	return DisplayVersion(c.Version, c.Metadata)
+}

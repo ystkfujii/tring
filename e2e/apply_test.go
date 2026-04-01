@@ -20,20 +20,24 @@ import (
 	"github.com/ystkfujii/tring/pkg/impl/sources"
 
 	// Register source implementations
+	_ "github.com/ystkfujii/tring/pkg/impl/sources/aqua"
 	_ "github.com/ystkfujii/tring/pkg/impl/sources/envfile"
 	_ "github.com/ystkfujii/tring/pkg/impl/sources/githubaction"
 	_ "github.com/ystkfujii/tring/pkg/impl/sources/gomod"
 
 	// Register resolver implementations
+	_ "github.com/ystkfujii/tring/pkg/impl/resolver/aqua_registry"
 	_ "github.com/ystkfujii/tring/pkg/impl/resolver/githubrelease"
 	_ "github.com/ystkfujii/tring/pkg/impl/resolver/goproxy"
 	_ "github.com/ystkfujii/tring/pkg/impl/resolver/gotoolchain"
 )
 
 type versionsFixture struct {
-	ProxyModules        map[string][]proxyVersionFixture   `yaml:"proxy_modules"`
-	GitHubRepos         map[string][]githubTagVersionEntry `yaml:"github_repos"`
-	GotoolchainReleases []gotoolchainReleaseEntry          `yaml:"gotoolchain_releases"`
+	ProxyModules        map[string][]proxyVersionFixture       `yaml:"proxy_modules"`
+	GitHubRepos         map[string][]githubTagVersionEntry     `yaml:"github_repos"`
+	GotoolchainReleases []gotoolchainReleaseEntry              `yaml:"gotoolchain_releases"`
+	GitHubReleaseRepos  map[string][]githubReleaseVersionEntry `yaml:"github_release_repos"`
+	AquaRegistries      map[string]string                      `yaml:"aqua_registries"`
 }
 
 type proxyVersionsFixture struct {
@@ -41,7 +45,9 @@ type proxyVersionsFixture struct {
 }
 
 type githubVersionsFixture struct {
-	GitHubRepos map[string][]githubTagVersionEntry `yaml:"github_repos"`
+	GitHubRepos        map[string][]githubTagVersionEntry     `yaml:"github_repos"`
+	GitHubReleaseRepos map[string][]githubReleaseVersionEntry `yaml:"github_release_repos"`
+	AquaRegistries     map[string]string                      `yaml:"aqua_registries"`
 }
 
 type gotoolchainVersionsFixture struct {
@@ -64,6 +70,13 @@ type gotoolchainReleaseEntry struct {
 	Stable  bool   `yaml:"stable"`
 }
 
+type githubReleaseVersionEntry struct {
+	TagName     string `yaml:"tag_name"`
+	PublishedAt string `yaml:"published_at"`
+	CreatedAt   string `yaml:"created_at"`
+	Draft       bool   `yaml:"draft"`
+}
+
 func TestApplyE2E(t *testing.T) {
 	proxyFixture, err := loadProxyVersionFixtures(filepath.Join("testdata", "versions.goproxy.yaml"))
 	if err != nil {
@@ -84,6 +97,8 @@ func TestApplyE2E(t *testing.T) {
 		ProxyModules:        proxyFixture.ProxyModules,
 		GitHubRepos:         githubFixture.GitHubRepos,
 		GotoolchainReleases: gotoolchainFixture.GotoolchainReleases,
+		GitHubReleaseRepos:  githubFixture.GitHubReleaseRepos,
+		AquaRegistries:      githubFixture.AquaRegistries,
 	}
 
 	// Start test servers
@@ -398,6 +413,39 @@ func setupTestRepos(github *testgithub.Server, fixtures *versionsFixture) error 
 		}
 
 		github.AddRepo(parts[0], parts[1], tags)
+	}
+
+	for repoKey, entries := range fixtures.GitHubReleaseRepos {
+		parts := strings.SplitN(repoKey, "/", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return fmt.Errorf("invalid github release repo key: %q (expected owner/repo)", repoKey)
+		}
+
+		releases := make([]testgithub.ReleaseVersion, 0, len(entries))
+		for _, entry := range entries {
+			publishedAt, err := time.Parse(time.RFC3339, entry.PublishedAt)
+			if err != nil && entry.PublishedAt != "" {
+				return fmt.Errorf("invalid published_at for repo %q release %q: %w", repoKey, entry.TagName, err)
+			}
+
+			createdAt, err := time.Parse(time.RFC3339, entry.CreatedAt)
+			if err != nil && entry.CreatedAt != "" {
+				return fmt.Errorf("invalid created_at for repo %q release %q: %w", repoKey, entry.TagName, err)
+			}
+
+			releases = append(releases, testgithub.ReleaseVersion{
+				TagName:     entry.TagName,
+				PublishedAt: publishedAt,
+				CreatedAt:   createdAt,
+				Draft:       entry.Draft,
+			})
+		}
+
+		github.AddReleaseRepo(parts[0], parts[1], releases)
+	}
+
+	for ref, content := range fixtures.AquaRegistries {
+		github.AddRegistry(ref, content)
 	}
 
 	return nil

@@ -69,9 +69,8 @@ func New(opts Options) (*Planner, error) {
 // Plan creates planned changes for the given dependencies.
 func (p *Planner) Plan(ctx context.Context, deps []model.Dependency) ([]model.PlannedChange, error) {
 	var changes []model.PlannedChange
-	// candidatesMap caches resolver results by dependency name.
-	// If a dependency name appears multiple times (e.g., same module in different files),
-	// the resolver is called only once and the result is reused.
+	// candidatesMap caches resolver results by dependency resolution key.
+	// Dependencies with different resolver-affecting metadata are cached separately.
 	candidatesMap := make(map[string]model.Candidates)
 
 	for _, dep := range deps {
@@ -103,7 +102,8 @@ func (p *Planner) planDependency(ctx context.Context, dep model.Dependency, cand
 	}
 
 	// Check cache first
-	candidates, cached := candidatesMap[dep.Name]
+	cacheKey := dep.ResolveCacheKey()
+	candidates, cached := candidatesMap[cacheKey]
 	if !cached {
 		var err error
 		candidates, err = p.resolver.Resolve(ctx, dep)
@@ -112,7 +112,7 @@ func (p *Planner) planDependency(ctx context.Context, dep model.Dependency, cand
 			change.ErrorDetail = err.Error()
 			return change
 		}
-		candidatesMap[dep.Name] = candidates
+		candidatesMap[cacheKey] = candidates
 	}
 
 	// Filter by stability based on current version:
@@ -155,7 +155,7 @@ func (p *Planner) planDependency(ctx context.Context, dep model.Dependency, cand
 	change.SelectedCandidate = selected
 
 	if p.showDiffLink {
-		change.DiffLink = generateDiffLink(dep.Version, selected)
+		change.DiffLink = generateDiffLink(dep, selected)
 	}
 
 	return change
@@ -181,16 +181,16 @@ func (p *Planner) applyStrategy(candidates model.Candidates, current *semver.Ver
 
 // generateDiffLink generates a diff link using metadata from the selected candidate.
 // Returns empty string if repo_url metadata is not available or versions are nil.
-func generateDiffLink(currentVersion *semver.Version, selected *model.Candidate) string {
-	if currentVersion == nil || selected == nil || selected.Version == nil {
+func generateDiffLink(dep model.Dependency, selected *model.Candidate) string {
+	if dep.Version == nil || selected == nil || selected.Version == nil {
 		return ""
 	}
 
 	// Get repo_url from candidate metadata (set by resolver)
-	repoURL := selected.Metadata["repo_url"]
+	repoURL := selected.Metadata[model.MetadataRepoURL]
 	if repoURL == "" {
 		return ""
 	}
 
-	return fmt.Sprintf("%s/compare/%s...%s", repoURL, currentVersion.Original(), selected.Version.Original())
+	return fmt.Sprintf("%s/compare/%s...%s", repoURL, dep.DisplayVersion(), selected.DisplayVersion())
 }
