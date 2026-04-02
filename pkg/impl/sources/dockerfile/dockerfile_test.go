@@ -4,9 +4,12 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Masterminds/semver/v3"
+	distref "github.com/distribution/reference"
+	dfparser "github.com/moby/buildkit/frontend/dockerfile/parser"
 
 	"github.com/ystkfujii/tring/internal/domain/model"
 	"github.com/ystkfujii/tring/pkg/impl/resolver/containerimage"
@@ -198,8 +201,11 @@ func TestExtract_ImageMappingApplied(t *testing.T) {
 	if dep.Name != "my-app" {
 		t.Errorf("expected Name='my-app', got %q", dep.Name)
 	}
-	if dep.Metadata[MetadataRepository] != "myregistry.io/myimage" {
-		t.Errorf("expected repository='myregistry.io/myimage', got %q", dep.Metadata[MetadataRepository])
+	if dep.Metadata[MetadataRepository] != "myimage" {
+		t.Errorf("expected repository='myimage', got %q", dep.Metadata[MetadataRepository])
+	}
+	if dep.Metadata[MetadataRegistryHost] != "myregistry.io" {
+		t.Errorf("expected registry_host='myregistry.io', got %q", dep.Metadata[MetadataRegistryHost])
 	}
 }
 
@@ -623,38 +629,31 @@ func TestParseFROMLine(t *testing.T) {
 		{
 			line: "FROM docker.io/library/debian:12.10",
 			expected: &fromLine{
-				lineNum:   1,
-				original:  "FROM docker.io/library/debian:12.10",
-				imageName: "docker.io/library/debian",
-				tag:       "12.10",
+				lineNum:             1,
+				original:            "FROM docker.io/library/debian:12.10",
+				imageName:           "debian",
+				normalizedImageName: "docker.io/library/debian",
+				tag:                 "12.10",
+				repository:          "library/debian",
+				registryHost:        "docker.io",
 			},
 		},
 		{
-			line: "FROM golang",
-			expected: &fromLine{
-				lineNum:   1,
-				original:  "FROM golang",
-				imageName: "golang",
-				tag:       "",
-			},
+			line:     "FROM golang",
+			expected: nil,
 		},
 		{
 			line:     "RUN apt-get update",
-			expected: nil,
-		},
-		{
-			line:     "# FROM golang:1.24",
-			expected: nil,
-		},
-		{
-			line:     "",
 			expected: nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.line, func(t *testing.T) {
-			result := parseFROMLine(tt.line, 1)
+			result, err := parseTestFROMLine(tt.line)
+			if err != nil {
+				t.Fatalf("parseTestFROMLine() error = %v", err)
+			}
 			if tt.expected == nil {
 				if result != nil {
 					t.Errorf("expected nil, got %+v", result)
@@ -676,31 +675,106 @@ func TestParseFROMLine(t *testing.T) {
 			if result.platform != tt.expected.platform {
 				t.Errorf("platform: got %q, want %q", result.platform, tt.expected.platform)
 			}
+			if tt.expected.normalizedImageName != "" && result.normalizedImageName != tt.expected.normalizedImageName {
+				t.Errorf("normalizedImageName: got %q, want %q", result.normalizedImageName, tt.expected.normalizedImageName)
+			}
+			if tt.expected.repository != "" && result.repository != tt.expected.repository {
+				t.Errorf("repository: got %q, want %q", result.repository, tt.expected.repository)
+			}
+			if tt.expected.registryHost != "" && result.registryHost != tt.expected.registryHost {
+				t.Errorf("registryHost: got %q, want %q", result.registryHost, tt.expected.registryHost)
+			}
 		})
 	}
 }
 
-func TestGetRepository(t *testing.T) {
+func parseTestFROMLine(line string) (*fromLine, error) {
+	result, err := dfparser.Parse(strings.NewReader(line))
+	if err != nil {
+		return nil, err
+	}
+	if len(result.AST.Children) == 0 {
+		return nil, nil
+	}
+	return parseFROMNode(result.AST.Children[0])
+}
+
+func TestParseFROMLine_NormalizesReferenceMetadata(t *testing.T) {
 	tests := []struct {
-		imageName string
-		expected  string
+		line               string
+		wantImageName      string
+		wantNormalizedName string
+		wantRegistryHost   string
+		wantRepository     string
 	}{
-		{"golang", "library/golang"},
-		{"debian", "library/debian"},
-		{"nginx", "library/nginx"},
-		{"myuser/myimage", "myuser/myimage"},
-		{"docker.io/library/golang", "library/golang"},
-		{"docker.io/myuser/myimage", "myuser/myimage"},
-		{"gcr.io/project/image", "gcr.io/project/image"},
+		{
+			line:               "FROM golang:1.24",
+			wantImageName:      "golang",
+			wantNormalizedName: "docker.io/library/golang",
+			wantRegistryHost:   "docker.io",
+			wantRepository:     "library/golang",
+		},
+		{
+			line:               "FROM docker.io/library/golang:1.24",
+			wantImageName:      "golang",
+			wantNormalizedName: "docker.io/library/golang",
+			wantRegistryHost:   "docker.io",
+			wantRepository:     "library/golang",
+		},
+		{
+			line:               "FROM ghcr.io/org/app:v1.2.3",
+			wantImageName:      "ghcr.io/org/app",
+			wantNormalizedName: "ghcr.io/org/app",
+			wantRegistryHost:   "ghcr.io",
+			wantRepository:     "org/app",
+		},
+		{
+			line:               "FROM localhost:5000/foo/bar:1.0.0",
+			wantImageName:      "localhost:5000/foo/bar",
+			wantNormalizedName: "localhost:5000/foo/bar",
+			wantRegistryHost:   "localhost:5000",
+			wantRepository:     "foo/bar",
+		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.imageName, func(t *testing.T) {
-			result := getRepository(tt.imageName)
-			if result != tt.expected {
-				t.Errorf("getRepository(%q) = %q, want %q", tt.imageName, result, tt.expected)
+		t.Run(tt.line, func(t *testing.T) {
+			result, err := parseTestFROMLine(tt.line)
+			if err != nil {
+				t.Fatalf("parseTestFROMLine() error = %v", err)
+			}
+			if result == nil {
+				t.Fatal("expected parsed FROM line, got nil")
+			}
+			if result.imageName != tt.wantImageName {
+				t.Errorf("imageName = %q, want %q", result.imageName, tt.wantImageName)
+			}
+			if result.normalizedImageName != tt.wantNormalizedName {
+				t.Errorf("normalizedImageName = %q, want %q", result.normalizedImageName, tt.wantNormalizedName)
+			}
+			if result.registryHost != tt.wantRegistryHost {
+				t.Errorf("registryHost = %q, want %q", result.registryHost, tt.wantRegistryHost)
+			}
+			if result.repository != tt.wantRepository {
+				t.Errorf("repository = %q, want %q", result.repository, tt.wantRepository)
 			}
 		})
+	}
+}
+
+func TestLookupMapping_PrefersFamiliarThenCanonicalName(t *testing.T) {
+	s := &Source{
+		mappings: buildMappingLookup(nil),
+	}
+
+	named, err := distref.ParseNormalizedNamed("docker.io/library/golang:1.24")
+	if err != nil {
+		t.Fatalf("ParseNormalizedNamed() error = %v", err)
+	}
+
+	mapping := s.lookupMapping(distref.FamiliarName(named), named.Name())
+	if mapping.DependencyName != "go" {
+		t.Errorf("DependencyName = %q, want go", mapping.DependencyName)
 	}
 }
 
@@ -773,42 +847,6 @@ func TestValidateConfig(t *testing.T) {
 			err := ValidateConfig(tt.config)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateConfig() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestExtractRegistryHost(t *testing.T) {
-	tests := []struct {
-		imageName string
-		expected  string
-	}{
-		// GHCR
-		{"ghcr.io/owner/repo", "ghcr.io"},
-		// Docker Hub explicit
-		{"docker.io/library/debian", "docker.io"},
-		{"docker.io/myuser/myimage", "docker.io"},
-		{"registry-1.docker.io/library/debian", "docker.io"},
-		// Official images (no registry prefix) default to Docker Hub
-		{"debian", "docker.io"},
-		{"golang", "docker.io"},
-		{"nginx", "docker.io"},
-		// User images (no registry prefix) default to Docker Hub
-		{"myuser/myimage", "docker.io"},
-		// Custom registries with dots
-		{"gcr.io/project/image", "gcr.io"},
-		{"quay.io/myorg/myimage", "quay.io"},
-		{"myregistry.example.com/myimage", "myregistry.example.com"},
-		// Custom registries with port
-		{"localhost:5000/myimage", "localhost:5000"},
-		{"myregistry.io:8080/org/image", "myregistry.io:8080"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.imageName, func(t *testing.T) {
-			result := extractRegistryHost(tt.imageName)
-			if result != tt.expected {
-				t.Errorf("extractRegistryHost(%q) = %q, want %q", tt.imageName, result, tt.expected)
 			}
 		})
 	}

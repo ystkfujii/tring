@@ -166,43 +166,6 @@ func TestResolve_UsesMetadataRepository(t *testing.T) {
 	}
 }
 
-func TestResolve_FallsBackToNameWithLibraryPrefix(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify that library/ prefix is added for official images
-		if r.URL.Path != "/v2/repositories/library/nginx/tags" {
-			t.Errorf("expected repository 'library/nginx', got path: %s", r.URL.Path)
-		}
-
-		resp := dockerHubResponse{
-			Results: []dockerHubTag{
-				{Name: "1.25.0", LastUpdated: time.Now().Format(time.RFC3339)},
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			t.Errorf("failed to encode response: %v", err)
-		}
-	}))
-	defer server.Close()
-
-	resolver := New(Options{
-		DockerHubURL: server.URL,
-	})
-
-	// No metadata, should use Name with library/ prefix for Docker Hub
-	dep := model.Dependency{
-		Name: "nginx",
-		Metadata: map[string]string{
-			"registry_host": "docker.io",
-		},
-	}
-
-	_, err := resolver.Resolve(context.Background(), dep)
-	if err != nil {
-		t.Fatalf("Resolve failed: %v", err)
-	}
-}
-
 func TestResolve_RepositoryNotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
@@ -400,7 +363,7 @@ func TestGetRepository(t *testing.T) {
 					"registry_host": "docker.io",
 				},
 			},
-			expected: "library/nginx",
+			expected: "nginx",
 		},
 		{
 			name: "user namespaced image",
@@ -463,35 +426,6 @@ func TestNormalizeTag(t *testing.T) {
 			result := NormalizeTag(tt.input)
 			if result != tt.expected {
 				t.Errorf("NormalizeTag(%q) = %q, want %q", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestIsSimpleSemverTag(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected bool
-	}{
-		{"1", true},
-		{"1.2", true},
-		{"1.2.3", true},
-		{"12.10.0", true},
-		{"1.24-alpine", false},
-		{"bookworm", false},
-		{"latest", false},
-		{".1.2.3", false},
-		{"1.2.3.", false},
-		{"", false},
-		{"1.2.3.4", true}, // Valid for this check, but normalized later
-		{"1a2", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			result := IsSimpleSemverTag(tt.input)
-			if result != tt.expected {
-				t.Errorf("IsSimpleSemverTag(%q) = %v, want %v", tt.input, result, tt.expected)
 			}
 		})
 	}
