@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/Masterminds/semver/v3"
-	distref "github.com/distribution/reference"
+	"github.com/google/go-containerregistry/pkg/name"
 	dfparser "github.com/moby/buildkit/frontend/dockerfile/parser"
 
 	"github.com/ystkfujii/tring/internal/domain/model"
@@ -767,12 +767,15 @@ func TestLookupMapping_PrefersFamiliarThenCanonicalName(t *testing.T) {
 		mappings: buildMappingLookup(nil),
 	}
 
-	named, err := distref.ParseNormalizedNamed("docker.io/library/golang:1.24")
+	ref, err := name.ParseReference("docker.io/library/golang:1.24")
 	if err != nil {
-		t.Fatalf("ParseNormalizedNamed() error = %v", err)
+		t.Fatalf("ParseReference() error = %v", err)
 	}
 
-	mapping := s.lookupMapping(distref.FamiliarName(named), named.Name())
+	familiarName := extractFamiliarName(ref)
+	canonicalName := ref.Context().Name()
+
+	mapping := s.lookupMapping(familiarName, canonicalName)
 	if mapping.DependencyName != "go" {
 		t.Errorf("DependencyName = %q, want go", mapping.DependencyName)
 	}

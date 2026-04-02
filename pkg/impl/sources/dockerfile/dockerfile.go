@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
-	distref "github.com/distribution/reference"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/moby/buildkit/frontend/dockerfile/command"
 	dfparser "github.com/moby/buildkit/frontend/dockerfile/parser"
 	"gopkg.in/yaml.v3"
@@ -210,15 +210,16 @@ func parseFROMNode(node *dfparser.Node) (*fromLine, error) {
 		return nil, nil
 	}
 
-	named, tagged, err := parseNamedTaggedReference(args[0])
+	ref, tag, err := parseTaggedReference(args[0])
 	if err != nil {
 		return nil, err
 	}
-	if tagged == nil {
+	if tag == "" {
+		// No explicit tag, skip
 		return nil, nil
 	}
 
-	version, err := containerimage.ParseTag(tagged.Tag())
+	version, err := containerimage.ParseTag(tag)
 	if err != nil {
 		// Skip non-semver tags (e.g., "alpine", "latest", "bookworm")
 		return nil, nil
@@ -228,12 +229,12 @@ func parseFROMNode(node *dfparser.Node) (*fromLine, error) {
 		lineNum:             node.StartLine,
 		original:            strings.TrimSpace(node.Original),
 		platform:            extractPlatform(node.Flags),
-		imageName:           distref.FamiliarName(named),
-		normalizedImageName: named.Name(),
-		tag:                 tagged.Tag(),
+		imageName:           extractFamiliarName(ref),
+		normalizedImageName: extractNormalizedName(ref),
+		tag:                 tag,
 		alias:               extractAlias(args[1:]),
-		repository:          distref.Path(named),
-		registryHost:        distref.Domain(named),
+		repository:          extractRepository(ref),
+		registryHost:        extractRegistryHost(ref),
 		version:             version,
 	}, nil
 }
@@ -269,18 +270,133 @@ func extractAlias(args []string) string {
 	return ""
 }
 
-func parseNamedTaggedReference(imageRef string) (distref.Named, distref.NamedTagged, error) {
-	named, err := distref.ParseNormalizedNamed(strings.TrimSpace(imageRef))
+// parseTaggedReference parses an image reference and returns the tag if present.
+// Returns (ref, tag, nil) if the reference has an explicit tag.
+// Returns (ref, "", nil) if the reference has no explicit tag.
+// Returns (nil, "", err) if parsing fails.
+func parseTaggedReference(imageRef string) (name.Reference, string, error) {
+	trimmed := strings.TrimSpace(imageRef)
+
+	// Check if the reference contains a digest (sha256:...)
+	if strings.Contains(trimmed, "@sha256:") {
+		// Digest references are not supported
+		ref, err := name.ParseReference(trimmed)
+		if err != nil {
+			return nil, "", err
+		}
+		return ref, "", nil
+	}
+
+	// Check if the reference has an explicit tag
+	// We need to distinguish "golang:1.24" from "golang" (no tag)
+	// The tag part comes after the last ":" but we need to be careful about
+	// registry ports like "localhost:5000/image:tag"
+	hasExplicitTag := hasTag(trimmed)
+
+	ref, err := name.ParseReference(trimmed)
 	if err != nil {
-		return nil, nil, err
+		return nil, "", err
 	}
 
-	tagged, ok := named.(distref.NamedTagged)
-	if !ok {
-		return named, nil, nil
+	if !hasExplicitTag {
+		return ref, "", nil
 	}
 
-	return named, tagged, nil
+	// Extract the tag
+	if tag, ok := ref.(name.Tag); ok {
+		return ref, tag.TagStr(), nil
+	}
+
+	return ref, "", nil
+}
+
+// hasTag checks if the image reference string contains an explicit tag.
+// Handles cases like:
+// - "golang:1.24" -> true
+// - "golang" -> false
+// - "localhost:5000/image:tag" -> true
+// - "localhost:5000/image" -> false
+func hasTag(imageRef string) bool {
+	// Remove digest if present
+	if idx := strings.Index(imageRef, "@"); idx != -1 {
+		return false
+	}
+
+	// Find the last colon
+	lastColon := strings.LastIndex(imageRef, ":")
+	if lastColon == -1 {
+		return false
+	}
+
+	// Check if the colon is part of a port (registry:port/image)
+	// If there's a "/" after the colon, it's a port, not a tag
+	afterColon := imageRef[lastColon+1:]
+	if strings.Contains(afterColon, "/") {
+		return false
+	}
+
+	return true
+}
+
+// extractFamiliarName extracts the "familiar" (short) image name from a reference.
+// For Docker Hub official images: "index.docker.io/library/golang" -> "golang"
+// For Docker Hub user images: "index.docker.io/user/image" -> "user/image"
+// For other registries: "ghcr.io/org/app" -> "ghcr.io/org/app"
+func extractFamiliarName(ref name.Reference) string {
+	repo := ref.Context()
+	registry := repo.RegistryStr()
+	repoName := repo.RepositoryStr()
+
+	// For Docker Hub official images, return just the image name
+	if isDockerHubRegistry(registry) {
+		if strings.HasPrefix(repoName, "library/") {
+			return strings.TrimPrefix(repoName, "library/")
+		}
+		// Docker Hub user images without library/ prefix
+		return repoName
+	}
+
+	// For other registries, include the registry in the name
+	return registry + "/" + repoName
+}
+
+// isDockerHubRegistry checks if the registry is Docker Hub.
+func isDockerHubRegistry(registry string) bool {
+	switch registry {
+	case "index.docker.io", "docker.io", "registry-1.docker.io":
+		return true
+	default:
+		return false
+	}
+}
+
+// extractRepository extracts the repository path from a reference.
+// For Docker Hub: "library/golang" or "user/image"
+// For other registries: "org/app"
+func extractRepository(ref name.Reference) string {
+	return ref.Context().RepositoryStr()
+}
+
+// extractNormalizedName extracts the normalized (canonical) name from a reference.
+// Normalizes Docker Hub registry to "docker.io" for consistency with existing behavior.
+func extractNormalizedName(ref name.Reference) string {
+	name := ref.Context().Name()
+	// Normalize index.docker.io to docker.io for consistency
+	if strings.HasPrefix(name, "index.docker.io/") {
+		return "docker.io/" + strings.TrimPrefix(name, "index.docker.io/")
+	}
+	return name
+}
+
+// extractRegistryHost extracts the registry host from a reference.
+// Normalizes Docker Hub to "docker.io" for consistency with existing behavior.
+func extractRegistryHost(ref name.Reference) string {
+	registry := ref.Context().RegistryStr()
+	// Normalize index.docker.io to docker.io for consistency
+	if registry == "index.docker.io" {
+		return "docker.io"
+	}
+	return registry
 }
 
 // lookupMapping finds the mapping for an image name.
