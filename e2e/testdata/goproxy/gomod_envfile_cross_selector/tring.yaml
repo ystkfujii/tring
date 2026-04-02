@@ -11,6 +11,7 @@ groups:
         config:
           manifest_paths:
             - go.mod
+          track_require: true
       - type: envfile
         config:
           file_paths:

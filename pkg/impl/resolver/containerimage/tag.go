@@ -1,30 +1,45 @@
 package containerimage
 
 import (
-	"regexp"
+	"strings"
 
 	"github.com/Masterminds/semver/v3"
 )
 
-var simpleTagPattern = regexp.MustCompile(`^v?\d+(?:\.\d+){0,2}$`)
+// ParsedTag holds the parsed components of a container image tag.
+type ParsedTag struct {
+	Version *semver.Version
+	Suffix  string // e.g., "alpine" from "1.24-alpine"
+	Raw     string // original tag
+}
 
-// ParseTag attempts to parse a container image tag as semver.
-// Supports: 1, 1.2, 1.2.3, v1.2.3
-// Does not support: 1.24-alpine, bookworm, latest
-func ParseTag(tag string) (*semver.Version, error) {
-	if !simpleTagPattern.MatchString(tag) {
-		return nil, semver.ErrInvalidSemVer
+// ParseTag parses a container image tag into version and optional suffix.
+// Splits on first '-' only: "1.24-alpine" -> version=1.24.0, suffix="alpine"
+// Supports: 1, 1.2, 1.2.3, v1.2.3, 1.24-alpine, 1.24-alpine3.20
+// Does not support: latest, bookworm (non-numeric base)
+func ParseTag(tag string) (*ParsedTag, error) {
+	base, suffix, _ := strings.Cut(tag, "-")
+
+	v, err := semver.NewVersion(base)
+	if err != nil {
+		return nil, err
 	}
-	return semver.NewVersion(tag)
+
+	return &ParsedTag{
+		Version: v,
+		Suffix:  suffix,
+		Raw:     tag,
+	}, nil
 }
 
 // NormalizeTag converts a container image tag to a semver-compatible string.
 // Supports: 1 -> 1.0.0, 1.2 -> 1.2.0, 1.2.3 -> 1.2.3, v1.2.3 -> 1.2.3
 // Returns empty string if the tag cannot be normalized.
+// Note: This returns only the base version, ignoring suffix.
 func NormalizeTag(tag string) string {
-	v, err := ParseTag(tag)
+	parsed, err := ParseTag(tag)
 	if err != nil {
 		return ""
 	}
-	return v.String()
+	return parsed.Version.String()
 }

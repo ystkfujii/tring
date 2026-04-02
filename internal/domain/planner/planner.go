@@ -103,7 +103,8 @@ func (p *Planner) planDependency(ctx context.Context, dep model.Dependency, cand
 	}
 
 	// Check cache first
-	candidates, cached := candidatesMap[dep.Name]
+	cacheKey := dep.ResolverCacheKey()
+	candidates, cached := candidatesMap[cacheKey]
 	if !cached {
 		var err error
 		candidates, err = p.resolver.Resolve(ctx, dep)
@@ -112,7 +113,7 @@ func (p *Planner) planDependency(ctx context.Context, dep model.Dependency, cand
 			change.ErrorDetail = err.Error()
 			return change
 		}
-		candidatesMap[dep.Name] = candidates
+		candidatesMap[cacheKey] = candidates
 	}
 
 	// Filter by stability based on current version:

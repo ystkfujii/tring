@@ -16,6 +16,7 @@ groups:
         config:
           manifest_paths:
             - go.mod
+          track_require: true
     selectors:
       include:
         module_patterns:

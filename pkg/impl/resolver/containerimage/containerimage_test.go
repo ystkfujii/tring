@@ -97,11 +97,13 @@ func TestResolve_DockerHub_FilterNonSemverTags(t *testing.T) {
 		DockerHubURL: server.URL,
 	})
 
+	// No suffix in metadata -> only match tags without suffix
 	dep := model.Dependency{
 		Name: "golang",
 		Metadata: map[string]string{
 			"repository":    "library/golang",
 			"registry_host": "docker.io",
+			"tag_suffix":    "", // explicitly no suffix
 		},
 	}
 
@@ -110,9 +112,9 @@ func TestResolve_DockerHub_FilterNonSemverTags(t *testing.T) {
 		t.Fatalf("Resolve failed: %v", err)
 	}
 
-	// Only semver tags should be returned: 1.24.1, 1.24, 1, v1.25.0
+	// Only semver tags without suffix: 1.24.1, 1.24, 1, v1.25.0
 	if len(candidates.Items) != 4 {
-		t.Fatalf("expected 4 semver candidates, got %d", len(candidates.Items))
+		t.Fatalf("expected 4 semver candidates (no suffix), got %d", len(candidates.Items))
 	}
 
 	foundVersions := make(map[string]bool)
@@ -124,6 +126,60 @@ func TestResolve_DockerHub_FilterNonSemverTags(t *testing.T) {
 	for _, v := range expected {
 		if !foundVersions[v] {
 			t.Errorf("missing expected version: %s", v)
+		}
+	}
+}
+
+func TestResolve_DockerHub_FilterBySuffix(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := dockerHubResponse{
+			Results: []dockerHubTag{
+				{Name: "1.24-alpine", LastUpdated: "2024-03-10T00:00:00Z"},
+				{Name: "1.25-alpine", LastUpdated: "2024-03-15T00:00:00Z"},
+				{Name: "1.25-bookworm", LastUpdated: "2024-03-15T00:00:00Z"},
+				{Name: "1.25", LastUpdated: "2024-03-15T00:00:00Z"},
+				{Name: "latest", LastUpdated: "2024-03-15T00:00:00Z"},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Errorf("failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	resolver := New(Options{
+		DockerHubURL: server.URL,
+	})
+
+	// Current tag has suffix "alpine"
+	dep := model.Dependency{
+		Name: "golang",
+		Metadata: map[string]string{
+			"repository":    "library/golang",
+			"registry_host": "docker.io",
+			"tag_suffix":    "alpine",
+		},
+	}
+
+	candidates, err := resolver.Resolve(context.Background(), dep)
+	if err != nil {
+		t.Fatalf("Resolve failed: %v", err)
+	}
+
+	// Only alpine suffix tags: 1.24-alpine, 1.25-alpine
+	if len(candidates.Items) != 2 {
+		t.Fatalf("expected 2 candidates with alpine suffix, got %d", len(candidates.Items))
+	}
+
+	for _, c := range candidates.Items {
+		if c.Metadata["tag_suffix"] != "alpine" {
+			t.Errorf("expected tag_suffix='alpine', got %q", c.Metadata["tag_suffix"])
+		}
+		// Check that raw tag ends with "-alpine"
+		tag := c.Metadata["tag"]
+		if len(tag) < 7 || tag[len(tag)-6:] != "alpine" {
+			t.Errorf("expected tag to end with 'alpine', got %q", tag)
 		}
 	}
 }
@@ -397,6 +453,56 @@ func TestGetRepository(t *testing.T) {
 	}
 }
 
+func TestParseTag(t *testing.T) {
+	tests := []struct {
+		input       string
+		wantVersion string
+		wantSuffix  string
+		wantRaw     string
+		wantErr     bool
+	}{
+		// Basic semver
+		{"1", "1.0.0", "", "1", false},
+		{"1.24", "1.24.0", "", "1.24", false},
+		{"1.24.3", "1.24.3", "", "1.24.3", false},
+		{"v1.24.3", "1.24.3", "", "v1.24.3", false},
+		// With suffix
+		{"1.24-alpine", "1.24.0", "alpine", "1.24-alpine", false},
+		{"1.24-alpine3.20", "1.24.0", "alpine3.20", "1.24-alpine3.20", false},
+		{"1.24.1-bookworm", "1.24.1", "bookworm", "1.24.1-bookworm", false},
+		{"v1.2.3-slim", "1.2.3", "slim", "v1.2.3-slim", false},
+		// Invalid cases (non-semver base)
+		{"latest", "", "", "", true},
+		{"bookworm", "", "", "", true},
+		{"alpine", "", "", "", true},
+		{"", "", "", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			parsed, err := ParseTag(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("ParseTag(%q) expected error, got nil", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseTag(%q) unexpected error: %v", tt.input, err)
+			}
+			if parsed.Version.String() != tt.wantVersion {
+				t.Errorf("ParseTag(%q).Version = %q, want %q", tt.input, parsed.Version.String(), tt.wantVersion)
+			}
+			if parsed.Suffix != tt.wantSuffix {
+				t.Errorf("ParseTag(%q).Suffix = %q, want %q", tt.input, parsed.Suffix, tt.wantSuffix)
+			}
+			if parsed.Raw != tt.wantRaw {
+				t.Errorf("ParseTag(%q).Raw = %q, want %q", tt.input, parsed.Raw, tt.wantRaw)
+			}
+		})
+	}
+}
+
 func TestNormalizeTag(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -409,11 +515,12 @@ func TestNormalizeTag(t *testing.T) {
 		{"12", "12.0.0"},
 		{"12.10", "12.10.0"},
 		{"12.10.0", "12.10.0"},
+		// With suffix - returns base version only
+		{"1.24-alpine", "1.24.0"},
+		{"1.24.1-bookworm", "1.24.1"},
 		// Invalid cases
-		{"1.24-alpine", ""},
 		{"bookworm", ""},
 		{"latest", ""},
-		{"1.24.1-bookworm", ""},
 		{".1.2.3", ""},
 		{"1.2.3.", ""},
 		{"", ""},

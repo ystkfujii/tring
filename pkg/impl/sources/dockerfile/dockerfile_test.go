@@ -250,7 +250,7 @@ func TestExtract_ImageMappingApplied(t *testing.T) {
 	s := &Source{
 		paths: []string{dockerfile},
 		mappings: buildMappingLookup([]ImageMapping{
-			{Match: "myregistry.io/myimage", DependencyName: "my-app", VersionScheme: "semver"},
+			{Match: "myregistry.io/myimage", DependencyName: "my-app"},
 		}),
 	}
 
@@ -301,7 +301,7 @@ FROM debian:12.10
 	}
 }
 
-func TestExtract_SkipsNonSemverTags(t *testing.T) {
+func TestExtract_SuffixTags(t *testing.T) {
 	dir := t.TempDir()
 	dockerfile := filepath.Join(dir, "Dockerfile")
 
@@ -324,12 +324,30 @@ FROM golang:1.24.1
 		t.Fatalf("Extract failed: %v", err)
 	}
 
-	if len(deps) != 1 {
-		t.Fatalf("expected 1 dependency (only pure semver), got %d", len(deps))
+	// Now we extract both suffix tags and pure semver tags
+	// 1.24-alpine (suffix=alpine) and 1.24.1 (no suffix)
+	// bookworm and latest are still skipped (non-semver base)
+	if len(deps) != 2 {
+		t.Fatalf("expected 2 dependencies (suffix + pure semver), got %d", len(deps))
 	}
 
-	if deps[0].Version.String() != "1.24.1" {
-		t.Errorf("expected Version='1.24.1', got %q", deps[0].Version.String())
+	// First should be 1.24-alpine
+	if deps[0].Version.String() != "1.24.0" {
+		t.Errorf("expected first Version='1.24.0', got %q", deps[0].Version.String())
+	}
+	if deps[0].Metadata[MetadataTag] != "1.24-alpine" {
+		t.Errorf("expected first tag='1.24-alpine', got %q", deps[0].Metadata[MetadataTag])
+	}
+	if deps[0].Metadata[MetadataTagSuffix] != "alpine" {
+		t.Errorf("expected first tag_suffix='alpine', got %q", deps[0].Metadata[MetadataTagSuffix])
+	}
+
+	// Second should be 1.24.1
+	if deps[1].Version.String() != "1.24.1" {
+		t.Errorf("expected second Version='1.24.1', got %q", deps[1].Version.String())
+	}
+	if deps[1].Metadata[MetadataTagSuffix] != "" {
+		t.Errorf("expected second tag_suffix='', got %q", deps[1].Metadata[MetadataTagSuffix])
 	}
 }
 
@@ -863,6 +881,114 @@ func TestApply_SkipsNonDockerfileChanges(t *testing.T) {
 	}
 }
 
+func TestApply_UsesRawTagFromCandidate(t *testing.T) {
+	dir := t.TempDir()
+	dockerfile := filepath.Join(dir, "Dockerfile")
+
+	content := `FROM golang:1.24-alpine AS builder
+RUN go build -o /app .
+`
+	if err := os.WriteFile(dockerfile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Source{
+		paths:    []string{dockerfile},
+		mappings: buildMappingLookup(nil),
+	}
+
+	changes := []model.PlannedChange{
+		{
+			Dependency: model.Dependency{
+				Name:       "go",
+				Version:    semver.MustParse("1.24.0"),
+				SourceKind: sourceKind,
+				FilePath:   dockerfile,
+				Locator:    "1",
+				Metadata: map[string]string{
+					MetadataTag:       "1.24-alpine",
+					MetadataTagSuffix: "alpine",
+				},
+			},
+			CurrentVersion: semver.MustParse("1.24.0"),
+			TargetVersion:  semver.MustParse("1.25.0"),
+			SelectedCandidate: &model.Candidate{
+				Version: semver.MustParse("1.25.0"),
+				Metadata: map[string]string{
+					"tag":        "1.25-alpine",
+					"tag_suffix": "alpine",
+				},
+			},
+		},
+	}
+
+	if err := s.Apply(context.Background(), changes); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	data, err := os.ReadFile(dockerfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := `FROM golang:1.25-alpine AS builder
+RUN go build -o /app .
+`
+	if string(data) != expected {
+		t.Errorf("unexpected output:\n%s\nexpected:\n%s", string(data), expected)
+	}
+}
+
+func TestApply_FallbackToFormatTag(t *testing.T) {
+	dir := t.TempDir()
+	dockerfile := filepath.Join(dir, "Dockerfile")
+
+	content := `FROM golang:1.24 AS builder
+`
+	if err := os.WriteFile(dockerfile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &Source{
+		paths:    []string{dockerfile},
+		mappings: buildMappingLookup(nil),
+	}
+
+	// No SelectedCandidate - should fall back to formatTag
+	changes := []model.PlannedChange{
+		{
+			Dependency: model.Dependency{
+				Name:       "go",
+				Version:    semver.MustParse("1.24.0"),
+				SourceKind: sourceKind,
+				FilePath:   dockerfile,
+				Locator:    "1",
+				Metadata: map[string]string{
+					MetadataTag: "1.24",
+				},
+			},
+			CurrentVersion:    semver.MustParse("1.24.0"),
+			TargetVersion:     semver.MustParse("1.25.0"),
+			SelectedCandidate: nil, // No candidate metadata
+		},
+	}
+
+	if err := s.Apply(context.Background(), changes); err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	data, err := os.ReadFile(dockerfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := `FROM golang:1.25 AS builder
+`
+	if string(data) != expected {
+		t.Errorf("unexpected output:\n%s\nexpected:\n%s", string(data), expected)
+	}
+}
+
 // --- Unit Tests ---
 
 func TestParseStage(t *testing.T) {
@@ -1032,7 +1158,7 @@ func TestNormalizeTag(t *testing.T) {
 		{"1.2.3", "1.2.3"},
 		{"v1.2.3", "1.2.3"},
 		{"12.10", "12.10.0"},
-		{"1.24-alpine", ""},
+		{"1.24-alpine", "1.24.0"}, // Now returns base version
 		{"bookworm", ""},
 		{"latest", ""},
 		{"", ""},
