@@ -11,8 +11,8 @@ groups:
         config:
           manifest_paths:
             - go.mod
-          include_require: false
-          track_go_version: true
+          track_require: false
+          track_go: true
           track_toolchain: true
       - type: dockerfile
         config:
@@ -21,7 +21,6 @@ groups:
           image_mappings:
             - match: golang
               dependency_name: go
-              version_scheme: semver
     selectors:
       include:
         module_patterns:

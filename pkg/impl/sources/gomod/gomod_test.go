@@ -44,7 +44,7 @@ require (
 		t.Fatalf("failed to write test go.mod: %v", err)
 	}
 
-	src := &Source{paths: []string{gomodPath}, includeRequire: true}
+	src := &Source{paths: []string{gomodPath}, TrackRequire: true}
 	deps, err := src.Extract(context.Background())
 	if err != nil {
 		t.Fatalf("Extract() error = %v", err)
@@ -95,7 +95,7 @@ require (
 		t.Fatalf("failed to write test go.mod: %v", err)
 	}
 
-	src := &Source{paths: []string{gomodPath}, includeRequire: true}
+	src := &Source{paths: []string{gomodPath}, TrackRequire: true}
 
 	changes := []model.PlannedChange{
 		{
@@ -156,7 +156,7 @@ require github.com/spf13/cobra v1.8.0
 
 	src := &Source{
 		paths:          []string{gomodPath},
-		includeRequire: true,
+		TrackRequire:   true,
 		trackGoVersion: true,
 	}
 	deps, err := src.Extract(context.Background())
@@ -206,7 +206,7 @@ require github.com/spf13/cobra v1.8.0
 
 	src := &Source{
 		paths:          []string{gomodPath},
-		includeRequire: true,
+		TrackRequire:   true,
 		trackToolchain: true,
 	}
 	deps, err := src.Extract(context.Background())
@@ -256,7 +256,7 @@ require github.com/spf13/cobra v1.8.0
 
 	src := &Source{
 		paths:          []string{gomodPath},
-		includeRequire: true,
+		TrackRequire:   true,
 		trackGoVersion: true,
 		trackToolchain: true,
 	}
@@ -288,7 +288,7 @@ require github.com/spf13/cobra v1.8.0
 
 	src := &Source{
 		paths:          []string{gomodPath},
-		includeRequire: true,
+		TrackRequire:   true,
 		trackGoVersion: true,
 	}
 
@@ -340,7 +340,7 @@ require github.com/spf13/cobra v1.8.0
 
 	src := &Source{
 		paths:          []string{gomodPath},
-		includeRequire: true,
+		TrackRequire:   true,
 		trackToolchain: true,
 	}
 
@@ -372,7 +372,7 @@ require github.com/spf13/cobra v1.8.0
 	}
 }
 
-func TestGomodExtractIncludeRequireFalse(t *testing.T) {
+func TestGomodExtractTrackRequireFalse(t *testing.T) {
 	tmpDir := t.TempDir()
 	gomodPath := filepath.Join(tmpDir, "go.mod")
 
@@ -391,7 +391,7 @@ require github.com/spf13/cobra v1.8.0
 
 	src := &Source{
 		paths:          []string{gomodPath},
-		includeRequire: false,
+		TrackRequire:   false,
 		trackGoVersion: true,
 		trackToolchain: true,
 	}
@@ -432,7 +432,7 @@ require github.com/spf13/cobra v1.8.0
 
 	src := &Source{
 		paths:          []string{gomodPath},
-		includeRequire: true,
+		TrackRequire:   true,
 		trackGoVersion: true,
 		trackToolchain: true,
 	}
@@ -515,7 +515,7 @@ require github.com/spf13/cobra v1.8.0
 
 	src := &Source{
 		paths:          []string{gomodPath},
-		includeRequire: true,
+		TrackRequire:   true,
 		trackGoVersion: true,
 		trackToolchain: true,
 	}
@@ -578,7 +578,7 @@ require github.com/spf13/cobra v1.8.0
 
 	src := &Source{
 		paths:          []string{gomodPath},
-		includeRequire: true,
+		TrackRequire:   true,
 		trackGoVersion: true,
 		trackToolchain: true,
 	}
@@ -622,30 +622,30 @@ require github.com/spf13/cobra v1.8.0
 	}
 }
 
-func TestConfigShouldIncludeRequire(t *testing.T) {
+func TestConfigShouldTrackRequire(t *testing.T) {
 	tests := []struct {
 		name     string
 		config   Config
 		expected bool
 	}{
 		{
-			name:     "nil defaults to true",
+			name:     "nil defaults to false",
 			config:   Config{ManifestPaths: []string{"go.mod"}},
-			expected: true,
+			expected: false,
 		},
 		{
 			name: "explicit true",
 			config: Config{
-				ManifestPaths:  []string{"go.mod"},
-				IncludeRequire: boolPtr(true),
+				ManifestPaths: []string{"go.mod"},
+				TrackRequire:  true,
 			},
 			expected: true,
 		},
 		{
 			name: "explicit false",
 			config: Config{
-				ManifestPaths:  []string{"go.mod"},
-				IncludeRequire: boolPtr(false),
+				ManifestPaths: []string{"go.mod"},
+				TrackRequire:  false,
 			},
 			expected: false,
 		},
@@ -653,20 +653,16 @@ func TestConfigShouldIncludeRequire(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.config.ShouldIncludeRequire(); got != tt.expected {
-				t.Errorf("ShouldIncludeRequire() = %v, want %v", got, tt.expected)
+			if got := tt.config.TrackRequire; got != tt.expected {
+				t.Errorf("TrackRequire = %v, want %v", got, tt.expected)
 			}
 		})
 	}
 }
 
-func boolPtr(b bool) *bool {
-	return &b
-}
-
-// TestFactoryCreateIncludeRequire tests that include_require config option
+// TestFactoryCreateTrackRequire tests that include_require config option
 // is properly propagated through the factory -> source -> extract chain.
-func TestFactoryCreateIncludeRequire(t *testing.T) {
+func TestFactoryCreateTrackRequire(t *testing.T) {
 	tmpDir := t.TempDir()
 	gomodPath := filepath.Join(tmpDir, "go.mod")
 
@@ -685,7 +681,7 @@ require github.com/spf13/cobra v1.8.0
 
 	factory := &Factory{}
 
-	t.Run("include_require unset defaults to true", func(t *testing.T) {
+	t.Run("track_require unset defaults to false", func(t *testing.T) {
 		rawConfig := map[string]interface{}{
 			"manifest_paths": []interface{}{"go.mod"},
 		}
@@ -700,24 +696,19 @@ require github.com/spf13/cobra v1.8.0
 			t.Fatalf("Extract() error = %v", err)
 		}
 
-		// Should extract require dependency
-		found := false
+		// Should NOT extract require dependency (default is false)
 		for _, dep := range deps {
 			if dep.Name == "github.com/spf13/cobra" {
-				found = true
-				break
+				t.Error("expected NOT to extract require dependency when track_require is unset (defaults to false)")
 			}
-		}
-		if !found {
-			t.Error("expected to extract require dependency when include_require is unset")
 		}
 	})
 
-	t.Run("include_require false excludes require", func(t *testing.T) {
+	t.Run("track_require false excludes require", func(t *testing.T) {
 		rawConfig := map[string]interface{}{
-			"manifest_paths":   []interface{}{"go.mod"},
-			"include_require":  false,
-			"track_go_version": true,
+			"manifest_paths": []interface{}{"go.mod"},
+			"track_require":  false,
+			"track_go":       true,
 		}
 
 		src, err := factory.Create(rawConfig, tmpDir)
@@ -733,7 +724,7 @@ require github.com/spf13/cobra v1.8.0
 		// Should NOT extract require dependency
 		for _, dep := range deps {
 			if dep.Name == "github.com/spf13/cobra" {
-				t.Error("expected NOT to extract require dependency when include_require is false")
+				t.Error("expected NOT to extract require dependency when track_require is false")
 			}
 		}
 
@@ -746,16 +737,16 @@ require github.com/spf13/cobra v1.8.0
 			}
 		}
 		if !found {
-			t.Error("expected to extract go directive when track_go_version is true")
+			t.Error("expected to extract go directive when track_go is true")
 		}
 	})
 
-	t.Run("include_require false with track_go_version only", func(t *testing.T) {
+	t.Run("track_require false with track_go only", func(t *testing.T) {
 		rawConfig := map[string]interface{}{
-			"manifest_paths":   []interface{}{"go.mod"},
-			"include_require":  false,
-			"track_go_version": true,
-			"track_toolchain":  false,
+			"manifest_paths":  []interface{}{"go.mod"},
+			"track_require":   false,
+			"track_go":        true,
+			"track_toolchain": false,
 		}
 
 		src, err := factory.Create(rawConfig, tmpDir)
@@ -778,12 +769,12 @@ require github.com/spf13/cobra v1.8.0
 		}
 	})
 
-	t.Run("include_require false with track_toolchain only", func(t *testing.T) {
+	t.Run("track_require false with track_toolchain only", func(t *testing.T) {
 		rawConfig := map[string]interface{}{
-			"manifest_paths":   []interface{}{"go.mod"},
-			"include_require":  false,
-			"track_go_version": false,
-			"track_toolchain":  true,
+			"manifest_paths":  []interface{}{"go.mod"},
+			"track_require":   false,
+			"track_go":        false,
+			"track_toolchain": true,
 		}
 
 		src, err := factory.Create(rawConfig, tmpDir)
@@ -806,12 +797,12 @@ require github.com/spf13/cobra v1.8.0
 		}
 	})
 
-	t.Run("include_require true extracts all", func(t *testing.T) {
+	t.Run("track_require true extracts all", func(t *testing.T) {
 		rawConfig := map[string]interface{}{
-			"manifest_paths":   []interface{}{"go.mod"},
-			"include_require":  true,
-			"track_go_version": true,
-			"track_toolchain":  true,
+			"manifest_paths":  []interface{}{"go.mod"},
+			"track_require":   true,
+			"track_go":        true,
+			"track_toolchain": true,
 		}
 
 		src, err := factory.Create(rawConfig, tmpDir)
@@ -875,7 +866,7 @@ require github.com/spf13/cobra v1.8.0
 
 	src := &Source{
 		paths:          []string{gomodPath},
-		includeRequire: false,
+		TrackRequire:   false,
 		trackGoVersion: true,
 	}
 	deps, err := src.Extract(context.Background())
@@ -917,7 +908,7 @@ require github.com/spf13/cobra v1.8.0
 
 	src := &Source{
 		paths:          []string{gomodPath},
-		includeRequire: false,
+		TrackRequire:   false,
 		trackToolchain: true,
 	}
 	deps, err := src.Extract(context.Background())
@@ -957,7 +948,7 @@ require github.com/spf13/cobra v1.8.0
 
 	src := &Source{
 		paths:          []string{gomodPath},
-		includeRequire: false,
+		TrackRequire:   false,
 		trackGoVersion: true,
 	}
 	deps, err := src.Extract(context.Background())
@@ -995,7 +986,7 @@ require github.com/spf13/cobra v1.8.0
 
 	src := &Source{
 		paths:          []string{gomodPath},
-		includeRequire: false,
+		TrackRequire:   false,
 		trackToolchain: true,
 	}
 	deps, err := src.Extract(context.Background())

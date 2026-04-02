@@ -21,6 +21,7 @@ const (
 const (
 	metadataRegistryHost = "registry_host"
 	metadataRepository   = "repository"
+	metadataTagSuffix    = "tag_suffix"
 )
 
 // Known registry hosts
@@ -126,6 +127,7 @@ func (r *Resolver) Kind() string {
 // Resolve fetches version candidates for the given container image dependency.
 // It determines the registry from Dependency.Metadata["registry_host"] and dispatches
 // to the appropriate provider.
+// Candidates are filtered to match the current tag's suffix.
 func (r *Resolver) Resolve(ctx context.Context, dep model.Dependency) (model.Candidates, error) {
 	registryHost := r.getRegistryHost(dep)
 	repository := r.getRepository(dep)
@@ -144,24 +146,41 @@ func (r *Resolver) Resolve(ctx context.Context, dep model.Dependency) (model.Can
 		return model.Candidates{}, fmt.Errorf("failed to fetch tags for %s: %w", repository, err)
 	}
 
+	// Get current tag suffix for filtering
+	currentSuffix := r.getTagSuffix(dep)
+
 	var candidates []model.Candidate
 	for _, tag := range tags {
-		v, err := ParseTag(tag.Name)
+		parsed, err := ParseTag(tag.Name)
 		if err != nil {
 			// Skip non-semver tags
 			continue
 		}
 
+		// Filter: only include candidates with matching suffix
+		if parsed.Suffix != currentSuffix {
+			continue
+		}
+
 		candidates = append(candidates, model.Candidate{
-			Version:    v,
+			Version:    parsed.Version,
 			ReleasedAt: tag.LastUpdated,
 			Metadata: map[string]string{
-				"tag": tag.Name,
+				"tag":        parsed.Raw,
+				"tag_suffix": parsed.Suffix,
 			},
 		})
 	}
 
 	return model.Candidates{Items: candidates}, nil
+}
+
+// getTagSuffix returns the tag suffix from dependency metadata.
+func (r *Resolver) getTagSuffix(dep model.Dependency) string {
+	if dep.Metadata != nil {
+		return dep.Metadata[metadataTagSuffix]
+	}
+	return ""
 }
 
 // getRegistryHost determines the registry host for the dependency.

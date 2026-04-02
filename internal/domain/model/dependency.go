@@ -29,3 +29,15 @@ type Dependency struct {
 func (d Dependency) Key() string {
 	return d.SourceKind + ":" + d.FilePath + ":" + d.Locator
 }
+
+// ResolverCacheKey returns a key for caching resolver results.
+// For containerimage dependencies, includes tag_suffix to avoid cache collision
+// between different suffix variants (e.g., "go:1.24-alpine" vs "go:1.24-bookworm").
+func (d Dependency) ResolverCacheKey() string {
+	if d.SourceKind == "dockerfile" && d.Metadata != nil {
+		if suffix := d.Metadata["tag_suffix"]; suffix != "" {
+			return d.Name + ":" + suffix
+		}
+	}
+	return d.Name
+}

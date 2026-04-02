@@ -27,6 +27,7 @@ const (
 	MetadataImageName    = "image_name"
 	MetadataRawRef       = "raw_ref"
 	MetadataTag          = "tag"
+	MetadataTagSuffix    = "tag_suffix"
 	MetadataAlias        = "alias"
 	MetadataPlatform     = "platform"
 	MetadataRepository   = "repository"
@@ -36,7 +37,7 @@ const (
 
 // Default image mappings: only non-obvious mappings (e.g., "golang" -> "go").
 var defaultImageMappings = []ImageMapping{
-	{Match: "golang", DependencyName: "go", VersionScheme: "semver"},
+	{Match: "golang", DependencyName: "go"},
 }
 
 func init() {
@@ -118,6 +119,7 @@ type fromLine struct {
 	platform     string
 	familiarName string
 	tag          string
+	tagSuffix    string
 	alias        string
 	repository   string
 	registryHost string
@@ -161,7 +163,6 @@ func (s *Source) extractFromFile(path string) ([]model.Dependency, error) {
 		}
 
 		mapping := s.lookupMapping(fromInfo.familiarName)
-
 		deps = append(deps, model.Dependency{
 			Name:       mapping.DependencyName,
 			Version:    fromInfo.version,
@@ -172,6 +173,7 @@ func (s *Source) extractFromFile(path string) ([]model.Dependency, error) {
 				MetadataImageName:    fromInfo.familiarName,
 				MetadataRawRef:       fromInfo.sourceCode,
 				MetadataTag:          fromInfo.tag,
+				MetadataTagSuffix:    fromInfo.tagSuffix,
 				MetadataAlias:        fromInfo.alias,
 				MetadataPlatform:     fromInfo.platform,
 				MetadataRepository:   fromInfo.repository,
@@ -214,12 +216,15 @@ func parseStage(stage instructions.Stage) *fromLine {
 	// Skip if no explicit tag
 	tagged, ok := ref.(reference.NamedTagged)
 	if !ok {
+		fmt.Printf("Skipping %s: no explicit tag\n", stage.BaseName)
 		return nil
 	}
 	tag := tagged.Tag()
 
-	version, err := containerimage.ParseTag(tag)
+	parsed, err := containerimage.ParseTag(tag)
 	if err != nil {
+		fmt.Printf("parseTag")
+		fmt.Println(err)
 		return nil
 	}
 
@@ -229,10 +234,11 @@ func parseStage(stage instructions.Stage) *fromLine {
 		platform:     stage.Platform,
 		familiarName: reference.FamiliarName(ref),
 		tag:          tag,
+		tagSuffix:    parsed.Suffix,
 		alias:        stage.Name,
 		repository:   reference.Path(ref),
 		registryHost: reference.Domain(ref),
-		version:      version,
+		version:      parsed.Version,
 	}
 }
 
@@ -244,7 +250,6 @@ func (s *Source) lookupMapping(imageName string) ImageMapping {
 	return ImageMapping{
 		Match:          imageName,
 		DependencyName: imageName,
-		VersionScheme:  "semver",
 	}
 }
 
@@ -280,7 +285,7 @@ func (s *Source) applyToFile(path string, changes []model.PlannedChange) error {
 		}
 		currentTag := c.Dependency.Metadata[MetadataTag]
 		currentTags[lineNum] = currentTag
-		newTags[lineNum] = formatTag(c.TargetVersion, currentTag)
+		newTags[lineNum] = getNewTag(c)
 	}
 
 	data, err := os.ReadFile(path)
@@ -315,20 +320,44 @@ func (s *Source) applyToFile(path string, changes []model.PlannedChange) error {
 	return os.WriteFile(path, []byte(result), 0644)
 }
 
+// getNewTag determines the new tag for a planned change.
+// Priority: SelectedCandidate.Metadata["tag"] -> formatTag fallback
+func getNewTag(c model.PlannedChange) string {
+	// Prefer raw tag from selected candidate metadata
+	if c.SelectedCandidate != nil && c.SelectedCandidate.Metadata != nil {
+		if rawTag := c.SelectedCandidate.Metadata["tag"]; rawTag != "" {
+			return rawTag
+		}
+	}
+	// Fallback to formatTag
+	return formatTag(c.TargetVersion, c.Dependency.Metadata[MetadataTag])
+}
+
 // formatTag formats the target version as a Docker tag.
+// Preserves suffix from original tag (e.g., "1.22.0-bookworm" -> "1.22.2-bookworm").
 func formatTag(version *semver.Version, originalTag string) string {
-	if strings.HasPrefix(originalTag, "v") {
-		return "v" + version.String()
+	// Split on first '-' to extract base and suffix
+	base, suffix, hasSuffix := strings.Cut(originalTag, "-")
+
+	var newBase string
+	if strings.HasPrefix(base, "v") {
+		newBase = "v" + version.String()
+	} else {
+		parts := strings.Split(strings.TrimPrefix(base, "v"), ".")
+		switch len(parts) {
+		case 1:
+			newBase = fmt.Sprintf("%d", version.Major())
+		case 2:
+			newBase = fmt.Sprintf("%d.%d", version.Major(), version.Minor())
+		default:
+			newBase = version.String()
+		}
 	}
-	parts := strings.Split(strings.TrimPrefix(originalTag, "v"), ".")
-	switch len(parts) {
-	case 1:
-		return fmt.Sprintf("%d", version.Major())
-	case 2:
-		return fmt.Sprintf("%d.%d", version.Major(), version.Minor())
-	default:
-		return version.String()
+
+	if hasSuffix {
+		return newBase + "-" + suffix
 	}
+	return newBase
 }
 
 // replaceTag replaces the tag in a single-line FROM instruction.

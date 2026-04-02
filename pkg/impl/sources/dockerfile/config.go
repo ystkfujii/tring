@@ -26,8 +26,6 @@ type ImageMapping struct {
 	Match string `yaml:"match"`
 	// DependencyName is the dependency name to use (e.g., "go")
 	DependencyName string `yaml:"dependency_name"`
-	// VersionScheme is the version scheme (e.g., "semver")
-	VersionScheme string `yaml:"version_scheme"`
 }
 
 // ValidateConfig validates dockerfile source configuration from a raw config map.

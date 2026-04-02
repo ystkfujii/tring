@@ -11,6 +11,7 @@ groups:
         config:
           manifest_paths:
             - go.mod
+          track_require: true
     selectors:
       include:
         module_patterns:
@@ -28,6 +29,7 @@ groups:
         config:
           manifest_paths:
             - go.mod
+          track_require: true
     selectors:
       include:
         module_patterns:
@@ -45,6 +47,7 @@ groups:
         config:
           manifest_paths:
             - go.mod
+          track_require: true
     selectors:
       include:
         module_patterns:
@@ -62,6 +65,7 @@ groups:
         config:
           manifest_paths:
             - min-age.go.mod
+          track_require: true
     selectors:
       include:
         module_patterns:
@@ -80,6 +84,7 @@ groups:
         config:
           manifest_paths:
             - stable.go.mod
+          track_require: true
     selectors:
       include:
         module_patterns:
@@ -97,6 +102,7 @@ groups:
         config:
           manifest_paths:
             - prerelease.go.mod
+          track_require: true
     selectors:
       include:
         module_patterns:

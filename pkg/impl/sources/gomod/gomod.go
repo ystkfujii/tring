@@ -54,7 +54,7 @@ func (f *Factory) Create(config map[string]interface{}, basePath string) (model.
 
 	return &Source{
 		paths:          paths,
-		includeRequire: cfg.ShouldIncludeRequire(),
+		TrackRequire:   cfg.TrackRequire,
 		trackGoVersion: cfg.TrackGoVersion,
 		trackToolchain: cfg.TrackToolchain,
 	}, nil
@@ -74,7 +74,7 @@ func decodeConfig(raw map[string]interface{}, cfg *Config) error {
 // Source extracts and updates dependencies from go.mod files.
 type Source struct {
 	paths          []string
-	includeRequire bool
+	TrackRequire   bool
 	trackGoVersion bool
 	trackToolchain bool
 }
@@ -148,7 +148,7 @@ func (s *Source) extractFromFile(path string) ([]model.Dependency, error) {
 		}
 	}
 
-	if s.includeRequire {
+	if s.TrackRequire {
 		for _, req := range f.Require {
 			if req.Indirect {
 				// Skip indirect dependencies for now

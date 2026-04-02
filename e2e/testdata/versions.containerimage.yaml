@@ -28,6 +28,10 @@ containerimage_repos:
       last_updated: "2024-02-15T00:00:00Z"
     - name: "1.24-alpine"
       last_updated: "2024-03-01T00:00:00Z"
+    - name: "1.25-alpine"
+      last_updated: "2024-03-20T00:00:00Z"
+    - name: "1.25-bookworm"
+      last_updated: "2024-03-20T00:00:00Z"
     - name: "latest"
       last_updated: "2024-03-20T00:00:00Z"
 

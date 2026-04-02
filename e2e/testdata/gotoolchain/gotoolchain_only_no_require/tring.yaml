@@ -2,7 +2,7 @@ version: 1
 
 groups:
   - name: go-only
-    description: Test that include_require false doesn't update require deps
+    description: Test that track_require false doesn't update require deps
     resolver: gotoolchain
     resolver_config:
       base_url: "{{GOTOOLCHAIN_URL}}"
@@ -11,8 +11,8 @@ groups:
         config:
           manifest_paths:
             - go.mod
-          include_require: false
-          track_go_version: true
+          track_require: false
+          track_go: true
           track_toolchain: false
     selectors:
       include:
