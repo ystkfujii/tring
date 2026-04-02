@@ -28,7 +28,7 @@ groups:
           - "*"
     policy:
       selection:
-        strategy: minor
+        strategy: patch
       constraints:
         - type: align
           anchor: go
