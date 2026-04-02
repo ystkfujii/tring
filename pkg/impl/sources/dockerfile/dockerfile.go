@@ -11,8 +11,8 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/distribution/reference"
-	dfparser "github.com/moby/buildkit/frontend/dockerfile/parser"
 	"github.com/moby/buildkit/frontend/dockerfile/instructions"
+	dfparser "github.com/moby/buildkit/frontend/dockerfile/parser"
 	"gopkg.in/yaml.v3"
 
 	"github.com/ystkfujii/tring/internal/domain/model"
