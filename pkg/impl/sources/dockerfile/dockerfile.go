@@ -2,6 +2,7 @@ package dockerfile
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -10,6 +11,9 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
+	distref "github.com/distribution/reference"
+	"github.com/moby/buildkit/frontend/dockerfile/command"
+	dfparser "github.com/moby/buildkit/frontend/dockerfile/parser"
 	"gopkg.in/yaml.v3"
 
 	"github.com/ystkfujii/tring/internal/domain/model"
@@ -34,9 +38,7 @@ const (
 // Default image mappings
 var defaultImageMappings = []ImageMapping{
 	{Match: "golang", DependencyName: "go", VersionScheme: "semver"},
-	{Match: "docker.io/library/golang", DependencyName: "go", VersionScheme: "semver"},
 	{Match: "debian", DependencyName: "debian", VersionScheme: "semver"},
-	{Match: "docker.io/library/debian", DependencyName: "debian", VersionScheme: "semver"},
 }
 
 func init() {
@@ -121,12 +123,16 @@ func (s *Source) Kind() string {
 
 // fromLine represents a parsed FROM instruction.
 type fromLine struct {
-	lineNum   int
-	original  string
-	platform  string
-	imageName string
-	tag       string
-	alias     string
+	lineNum             int
+	original            string
+	platform            string
+	imageName           string
+	normalizedImageName string
+	tag                 string
+	alias               string
+	repository          string
+	registryHost        string
+	version             *semver.Version
 }
 
 // FROM instruction regex
@@ -149,46 +155,31 @@ func (s *Source) Extract(ctx context.Context) ([]model.Dependency, error) {
 }
 
 func (s *Source) extractFromFile(path string) ([]model.Dependency, error) {
-	file, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = file.Close() }()
+
+	result, err := dfparser.Parse(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse Dockerfile: %w", err)
+	}
 
 	var deps []model.Dependency
-	scanner := bufio.NewScanner(file)
-	lineNum := 0
-
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Text()
-
-		fromInfo := parseFROMLine(line, lineNum)
+	for _, node := range result.AST.Children {
+		fromInfo, err := parseFROMNode(node)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse FROM instruction at line %d: %w", node.StartLine, err)
+		}
 		if fromInfo == nil {
 			continue
 		}
 
-		// Skip if no tag or tag is not semver-like
-		if fromInfo.tag == "" {
-			continue
-		}
-
-		// Try to parse the tag as semver
-		version, err := containerimage.ParseTag(fromInfo.tag)
-		if err != nil {
-			// Skip non-semver tags (e.g., "alpine", "latest", "bookworm")
-			continue
-		}
-
-		// Look up the dependency mapping
-		mapping, repository := s.lookupMapping(fromInfo.imageName)
-
-		// Extract registry host from image name
-		registryHost := extractRegistryHost(fromInfo.imageName)
+		mapping := s.lookupMapping(fromInfo.imageName, fromInfo.normalizedImageName)
 
 		deps = append(deps, model.Dependency{
 			Name:       mapping.DependencyName,
-			Version:    version,
+			Version:    fromInfo.version,
 			SourceKind: sourceKind,
 			FilePath:   path,
 			Locator:    fmt.Sprintf("%d", fromInfo.lineNum),
@@ -198,102 +189,124 @@ func (s *Source) extractFromFile(path string) ([]model.Dependency, error) {
 				MetadataTag:          fromInfo.tag,
 				MetadataAlias:        fromInfo.alias,
 				MetadataPlatform:     fromInfo.platform,
-				MetadataRepository:   repository,
-				MetadataRegistryHost: registryHost,
+				MetadataRepository:   fromInfo.repository,
+				MetadataRegistryHost: fromInfo.registryHost,
 				MetadataLine:         fmt.Sprintf("%d", fromInfo.lineNum),
 			},
 		})
 	}
 
-	return deps, scanner.Err()
+	return deps, nil
 }
 
-// parseFROMLine parses a FROM instruction line.
-func parseFROMLine(line string, lineNum int) *fromLine {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-		return nil
+// parseFROMNode parses a FROM instruction node from the Dockerfile AST.
+func parseFROMNode(node *dfparser.Node) (*fromLine, error) {
+	if node == nil || !strings.EqualFold(node.Value, command.From) {
+		return nil, nil
 	}
 
-	matches := fromRegex.FindStringSubmatch(trimmed)
-	if matches == nil {
-		return nil
+	args := collectNodeValues(node.Next)
+	if len(args) == 0 {
+		return nil, nil
+	}
+
+	named, tagged, err := parseNamedTaggedReference(args[0])
+	if err != nil {
+		return nil, err
+	}
+	if tagged == nil {
+		return nil, nil
+	}
+
+	version, err := containerimage.ParseTag(tagged.Tag())
+	if err != nil {
+		// Skip non-semver tags (e.g., "alpine", "latest", "bookworm")
+		return nil, nil
 	}
 
 	return &fromLine{
-		lineNum:   lineNum,
-		original:  trimmed,
-		platform:  matches[1],
-		imageName: matches[2],
-		tag:       matches[3],
-		alias:     matches[4],
+		lineNum:             node.StartLine,
+		original:            strings.TrimSpace(node.Original),
+		platform:            extractPlatform(node.Flags),
+		imageName:           distref.FamiliarName(named),
+		normalizedImageName: named.Name(),
+		tag:                 tagged.Tag(),
+		alias:               extractAlias(args[1:]),
+		repository:          distref.Path(named),
+		registryHost:        distref.Domain(named),
+		version:             version,
+	}, nil
+}
+
+func collectNodeValues(node *dfparser.Node) []string {
+	var values []string
+	for ; node != nil; node = node.Next {
+		if node.Value != "" {
+			values = append(values, node.Value)
+		}
 	}
+	return values
+}
+
+func extractPlatform(flags []string) string {
+	for _, flag := range flags {
+		if value, ok := strings.CutPrefix(flag, "--platform="); ok {
+			return value
+		}
+		if value, ok := strings.CutPrefix(flag, "platform="); ok {
+			return value
+		}
+	}
+	return ""
+}
+
+func extractAlias(args []string) string {
+	for i := 0; i < len(args)-1; i++ {
+		if strings.EqualFold(args[i], "AS") {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+func parseNamedTaggedReference(imageRef string) (distref.Named, distref.NamedTagged, error) {
+	named, err := distref.ParseNormalizedNamed(strings.TrimSpace(imageRef))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	tagged, ok := named.(distref.NamedTagged)
+	if !ok {
+		return named, nil, nil
+	}
+
+	return named, tagged, nil
 }
 
 // lookupMapping finds the mapping for an image name.
-// Returns the mapping and the repository to use for resolution.
-func (s *Source) lookupMapping(imageName string) (ImageMapping, string) {
-	// Try exact match first
-	if mapping, ok := s.mappings[imageName]; ok {
-		return mapping, getRepository(imageName)
-	}
-
-	// Try with docker.io/library/ prefix for official images
-	if !strings.Contains(imageName, "/") {
-		fullName := "docker.io/library/" + imageName
-		if mapping, ok := s.mappings[fullName]; ok {
-			return mapping, getRepository(imageName)
+func (s *Source) lookupMapping(imageNames ...string) ImageMapping {
+	for _, imageName := range imageNames {
+		if imageName == "" {
+			continue
+		}
+		if mapping, ok := s.mappings[imageName]; ok {
+			return mapping
 		}
 	}
 
-	// No mapping found, use image name as dependency name
+	fallbackName := ""
+	for _, imageName := range imageNames {
+		if imageName != "" {
+			fallbackName = imageName
+			break
+		}
+	}
+
 	return ImageMapping{
-		Match:          imageName,
-		DependencyName: imageName,
+		Match:          fallbackName,
+		DependencyName: fallbackName,
 		VersionScheme:  "semver",
-	}, getRepository(imageName)
-}
-
-// getRepository returns the repository name for Docker Hub API.
-// For official images (no slash), returns "library/<image>".
-// For other images, returns the image name as-is.
-func getRepository(imageName string) string {
-	// Strip docker.io prefix if present
-	imageName = strings.TrimPrefix(imageName, "docker.io/")
-
-	// Official images without namespace get "library/" prefix
-	if !strings.Contains(imageName, "/") {
-		return "library/" + imageName
 	}
-	return imageName
-}
-
-// extractRegistryHost extracts the registry host from an image name.
-// Returns the registry host (e.g., "ghcr.io", "docker.io") or "docker.io" for Docker Hub images.
-func extractRegistryHost(imageName string) string {
-	// Check for known registry prefixes
-	if strings.HasPrefix(imageName, "ghcr.io/") {
-		return "ghcr.io"
-	}
-	if strings.HasPrefix(imageName, "docker.io/") {
-		return "docker.io"
-	}
-	if strings.HasPrefix(imageName, "registry-1.docker.io/") {
-		return "docker.io"
-	}
-
-	// Check if the first part contains a dot or colon (indicating a registry host)
-	// e.g., "myregistry.io/myimage" or "localhost:5000/myimage"
-	parts := strings.SplitN(imageName, "/", 2)
-	if len(parts) == 2 {
-		firstPart := parts[0]
-		if strings.Contains(firstPart, ".") || strings.Contains(firstPart, ":") {
-			return firstPart
-		}
-	}
-
-	// Default to Docker Hub for official images (no slash) or user images (user/repo)
-	return "docker.io"
 }
 
 // Apply applies the planned changes to the Dockerfiles.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -178,8 +177,7 @@ func (r *Resolver) getRegistryHost(dep model.Dependency) string {
 }
 
 // getRepository determines the container repository to query for tags.
-// Priority: Metadata["repository"] -> Name with library/ prefix for Docker Hub official images
-// IMPORTANT: Never infer repository from dep.Name (e.g., "go" should NOT become "golang")
+// Priority: Metadata["repository"] -> dependency name fallback.
 func (r *Resolver) getRepository(dep model.Dependency) string {
 	// Prefer metadata repository if available (set by dockerfile source)
 	if dep.Metadata != nil {
@@ -187,16 +185,7 @@ func (r *Resolver) getRepository(dep model.Dependency) string {
 			return repo
 		}
 	}
-
-	// Fall back to dependency name
-	// For official Docker Hub images (no slash), add library/ prefix
-	name := dep.Name
-	registryHost := r.getRegistryHost(dep)
-
-	if isDockerHubRegistry(registryHost) && !strings.Contains(name, "/") {
-		return "library/" + name
-	}
-	return name
+	return dep.Name
 }
 
 // getProvider returns the appropriate provider for the given registry host.
