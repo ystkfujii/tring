@@ -326,6 +326,11 @@ func (v *Validator) validatePolicyResolverCompatibility(p *Policy, resolverType,
 		})
 	}
 
+	// Note: containerimage resolver supports min_release_age for registries that provide
+	// release timestamps (e.g., Docker Hub). For registries without timestamps (e.g., GHCR),
+	// candidates with unknown release dates are excluded from selection when min_release_age
+	// is specified.
+
 	return errs
 }
 

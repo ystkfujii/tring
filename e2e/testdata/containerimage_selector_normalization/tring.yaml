@@ -1,0 +1,21 @@
+version: 1
+
+groups:
+  # Test that selector works on normalized dependency name (go, not golang)
+  - name: golang-selector
+    description: Test selector matches normalized dependency name (golang -> go)
+    resolver: containerimage
+    resolver_config:
+      registry_url: "{{CONTAINERIMAGE_URL}}"
+    sources:
+      - type: dockerfile
+        config:
+          file_paths:
+            - Dockerfile
+    selectors:
+      include:
+        module_patterns:
+          - "go"  # Matches normalized name, not "golang"
+    policy:
+      selection:
+        strategy: minor

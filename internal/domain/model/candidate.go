@@ -54,10 +54,16 @@ func (c Candidates) FilterByStability(current *semver.Version) Candidates {
 }
 
 // FilterByAge returns candidates older than the given duration.
+// Candidates with zero/unknown release timestamps are excluded when minAge is specified,
+// since we cannot verify they meet the age requirement.
 func (c Candidates) FilterByAge(minAge time.Duration, now time.Time) Candidates {
 	var filtered []Candidate
 	cutoff := now.Add(-minAge)
 	for _, item := range c.Items {
+		// Skip candidates with unknown release timestamps
+		if item.ReleasedAt.IsZero() {
+			continue
+		}
 		if !item.ReleasedAt.After(cutoff) {
 			filtered = append(filtered, item)
 		}

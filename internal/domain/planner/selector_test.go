@@ -86,6 +86,40 @@ func TestSelectorMatch(t *testing.T) {
 			depName:   "k8s.io/client-go",
 			wantMatch: true,
 		},
+		// Dockerfile source normalizes golang -> go, so selector should match "go" not "golang"
+		{
+			name: "dockerfile normalized name - selector matches go not golang",
+			selectors: &config.Selectors{
+				Include: &config.SelectorPatterns{
+					ModulePatterns: []string{"go"},
+				},
+			},
+			depName:   "go", // Dockerfile source normalizes "golang" image to "go" dependency name
+			wantMatch: true,
+		},
+		{
+			name: "dockerfile normalized name - selector golang does not match",
+			selectors: &config.Selectors{
+				Include: &config.SelectorPatterns{
+					ModulePatterns: []string{"golang"}, // This should NOT match the normalized name
+				},
+			},
+			depName:   "go", // Dockerfile source normalizes "golang" to "go"
+			wantMatch: false,
+		},
+		{
+			name: "dockerfile normalized name - exclude works on normalized name",
+			selectors: &config.Selectors{
+				Include: &config.SelectorPatterns{
+					ModulePatterns: []string{"*"},
+				},
+				Exclude: &config.SelectorPatterns{
+					ModulePatterns: []string{"go"}, // Exclude by normalized name
+				},
+			},
+			depName:   "go",
+			wantMatch: false,
+		},
 	}
 
 	for _, tt := range tests {

@@ -1,0 +1,20 @@
+version: 1
+
+groups:
+  - name: docker-images
+    description: Docker image version update test
+    resolver: containerimage
+    resolver_config:
+      registry_url: "{{CONTAINERIMAGE_URL}}"
+    sources:
+      - type: dockerfile
+        config:
+          file_paths:
+            - Dockerfile
+    selectors:
+      include:
+        module_patterns:
+          - "*"
+    policy:
+      selection:
+        strategy: minor

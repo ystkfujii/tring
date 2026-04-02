@@ -66,6 +66,51 @@ func TestCandidatesFilterByAge(t *testing.T) {
 	}
 }
 
+func TestCandidatesFilterByAge_ExcludesUnknownTimestamp(t *testing.T) {
+	now := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
+
+	c := model.Candidates{
+		Items: []model.Candidate{
+			{Version: mustParse("v1.0.0"), ReleasedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)},  // 14 days old
+			{Version: mustParse("v1.1.0"), ReleasedAt: time.Time{}},                                  // Unknown timestamp (zero value)
+			{Version: mustParse("v1.2.0"), ReleasedAt: time.Date(2024, 1, 10, 0, 0, 0, 0, time.UTC)}, // 5 days old
+		},
+	}
+
+	// Filter to versions at least 3 days old
+	// v1.1.0 has unknown timestamp (zero time.Time), so it should be excluded
+	filtered := c.FilterByAge(3*24*time.Hour, now)
+
+	if len(filtered.Items) != 2 {
+		t.Errorf("FilterByAge(3d) returned %d items, want 2 (unknown timestamp should be excluded)", len(filtered.Items))
+	}
+
+	// Verify v1.1.0 is not in the result
+	for _, item := range filtered.Items {
+		if item.Version.String() == "1.1.0" {
+			t.Errorf("FilterByAge should exclude v1.1.0 with unknown timestamp")
+		}
+	}
+}
+
+func TestCandidatesFilterByAge_AllUnknownTimestamps(t *testing.T) {
+	now := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
+
+	c := model.Candidates{
+		Items: []model.Candidate{
+			{Version: mustParse("v1.0.0"), ReleasedAt: time.Time{}}, // Unknown timestamp
+			{Version: mustParse("v1.1.0"), ReleasedAt: time.Time{}}, // Unknown timestamp
+		},
+	}
+
+	// When all candidates have unknown timestamps, all should be filtered out
+	filtered := c.FilterByAge(1*24*time.Hour, now)
+
+	if len(filtered.Items) != 0 {
+		t.Errorf("FilterByAge() returned %d items, want 0 (all unknown timestamps should be excluded)", len(filtered.Items))
+	}
+}
+
 func TestCandidatesLatest(t *testing.T) {
 	c := model.Candidates{
 		Items: []model.Candidate{
