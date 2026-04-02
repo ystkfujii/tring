@@ -28,4 +28,5 @@ func ExecuteContext(ctx context.Context) error {
 
 func init() {
 	rootCmd.AddCommand(applyCmd)
+	rootCmd.AddCommand(versionCmd)
 }
