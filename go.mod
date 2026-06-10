@@ -3,7 +3,7 @@ module github.com/ystkfujii/tring
 go 1.25.7
 
 require (
-	github.com/Masterminds/semver/v3 v3.2.1
+	github.com/Masterminds/semver/v3 v3.5.0
 	github.com/distribution/reference v0.6.0
 	github.com/moby/buildkit v0.16.0
 	github.com/spf13/cobra v1.10.2
